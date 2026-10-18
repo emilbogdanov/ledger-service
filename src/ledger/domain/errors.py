@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ledger.domain.ids import AccountId
     from ledger.domain.money import Money
 
@@ -29,3 +31,20 @@ class InsufficientFundsError(DomainError):
         self.account_id = account_id
         self.balance = balance
         self.requested = requested
+
+
+class AccountNotFoundError(DomainError):
+    def __init__(self, account_id: AccountId) -> None:
+        super().__init__(f"account {account_id} does not exist")
+        self.account_id = account_id
+
+
+class InvalidEntryError(DomainError):
+    pass
+
+
+class UnbalancedEntryError(InvalidEntryError):
+    def __init__(self, imbalances: Sequence[Money]) -> None:
+        off_by = ", ".join(str(imbalance) for imbalance in imbalances)
+        super().__init__(f"postings do not balance: off by {off_by}")
+        self.imbalances = tuple(imbalances)
