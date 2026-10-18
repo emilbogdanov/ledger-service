@@ -1,9 +1,16 @@
 from collections.abc import Collection
+from datetime import datetime
 from types import TracebackType
 from typing import Protocol, Self
 
+from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account
-from ledger.domain.ids import AccountId, ClientId
+from ledger.domain.ids import AccountId, ClientId, EntryId
+from ledger.domain.journal import JournalEntry
+
+
+class Clock(Protocol):
+    def now(self) -> datetime: ...
 
 
 class AccountRepository(Protocol):
@@ -22,9 +29,27 @@ class AccountRepository(Protocol):
     async def update(self, account: Account) -> None: ...
 
 
+class EntryRepository(Protocol):
+    async def add(self, entry: JournalEntry) -> None: ...
+
+    async def get(self, client_id: ClientId, entry_id: EntryId) -> JournalEntry | None: ...
+
+
+class IdempotencyRecords(Protocol):
+    async def find(self, client_id: ClientId, key: IdempotencyKey) -> IdempotencyRecord | None: ...
+
+    async def add(self, record: IdempotencyRecord) -> None: ...
+
+
 class UnitOfWork(Protocol):
     @property
     def accounts(self) -> AccountRepository: ...
+
+    @property
+    def entries(self) -> EntryRepository: ...
+
+    @property
+    def idempotency(self) -> IdempotencyRecords: ...
 
     async def __aenter__(self) -> Self: ...
 
@@ -36,4 +61,6 @@ class UnitOfWork(Protocol):
         tb: TracebackType | None,
     ) -> None: ...
 
+    # Raises IdempotencyKeyConflictError if another request stored one of this block's
+    # idempotency keys first.
     async def commit(self) -> None: ...
