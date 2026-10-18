@@ -1,0 +1,52 @@
+from typing import Annotated, Self
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from ledger.domain.accounts import Account
+from ledger.domain.money import MAX_AMOUNT, Currency
+
+_Limit = Annotated[int, Field(ge=0, le=MAX_AMOUNT)]
+_LIMIT_DESCRIPTION = (
+    "How far below zero the balance may go, in minor units of the account's currency. "
+    "0 forbids overdraft; null removes the floor entirely."
+)
+
+
+class _Request(BaseModel):
+    # A misspelt field is reported instead of silently falling back to its default.
+    model_config = ConfigDict(extra="forbid")
+
+
+class ErrorResponse(BaseModel):
+    detail: str
+    code: str
+
+
+class OpenAccount(_Request):
+    name: str
+    currency: Currency
+    overdraft_limit: _Limit | None = Field(default=0, description=_LIMIT_DESCRIPTION)
+
+
+class ChangeOverdraft(_Request):
+    overdraft_limit: _Limit | None = Field(description=_LIMIT_DESCRIPTION)
+
+
+class AccountResponse(BaseModel):
+    id: UUID
+    name: str
+    currency: Currency
+    # In minor units of the currency: 1050 EUR cents is 10.50 EUR.
+    balance: int
+    overdraft_limit: int | None
+
+    @classmethod
+    def of(cls, account: Account) -> Self:
+        return cls(
+            id=account.id,
+            name=str(account.name),
+            currency=account.currency,
+            balance=account.balance.amount,
+            overdraft_limit=account.overdraft.limit,
+        )

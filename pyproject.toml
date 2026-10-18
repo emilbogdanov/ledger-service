@@ -8,12 +8,18 @@ authors = [{ name = "Emil Bogdanov" }]
 dependencies = [
     "alembic>=1.20",
     "asyncpg>=0.32",
+    "fastapi>=0.143",
     "pydantic-settings>=2.16",
     "sqlalchemy[asyncio]>=2.1",
+    "uvicorn>=0.54",
 ]
+
+[project.scripts]
+ledger = "ledger.cli:main"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28",
     "hypothesis>=6.170",
     "mypy>=2.4",
     "pre-commit>=4.7",
