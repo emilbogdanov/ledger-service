@@ -42,8 +42,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# asserts, fake credentials, literal expectations, tests that request many fixtures
-"tests/**" = ["S101", "S105", "S106", "PLR2004", "PLR0917"]
+# asserts, fake credentials, literal expectations, tests that request many fixtures,
+# seeded randomness for test data
+"tests/**" = ["S101", "S105", "S106", "PLR2004", "PLR0917", "S311"]
 
 [tool.mypy]
 strict = true
