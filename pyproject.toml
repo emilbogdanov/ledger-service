@@ -1,0 +1,50 @@
+[project]
+name = "ledger"
+version = "0.1.0.dev0"
+description = "Double-entry ledger API: accounts per currency, balanced journal entries, idempotent transfers."
+requires-python = ">=3.13"
+license = "MIT"
+authors = [{ name = "Emil Bogdanov" }]
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4",
+    "pytest>=9.1",
+    "ruff>=0.17.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.13,<0.14"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "RET", "PTH",
+    "PL", "RUF", "S", "T20", "DTZ", "PT", "TRY", "ERA", "FBT", "ARG", "PIE", "TC",
+]
+ignore = [
+    "TRY003",   # exception messages are composed in the exception classes where it matters
+]
+
+[tool.ruff.lint.per-file-ignores]
+# asserts, fake credentials, literal expectations
+"tests/**" = ["S101", "S105", "S106", "PLR2004"]
+
+[tool.mypy]
+strict = true
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
+files = ["src", "tests"]
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+xfail_strict = true
+filterwarnings = ["error"]

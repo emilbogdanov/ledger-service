@@ -1,0 +1,2 @@
+# Keep LF in the repo so Windows checkouts don't fight ruff and the pre-commit fixers.
+* text=auto eol=lf
