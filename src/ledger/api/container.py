@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from ledger.application.accounts import AccountService
 from ledger.application.clients import ClientService
+from ledger.application.history import HistoryService
 from ledger.application.ports import Clock, UnitOfWork
 from ledger.application.postings import PostingService
 
@@ -27,3 +28,6 @@ class Container:
 
     def postings(self) -> PostingService:
         return PostingService(self.uow_factory(), self.clock)
+
+    def history(self) -> HistoryService:
+        return HistoryService(self.uow_factory())

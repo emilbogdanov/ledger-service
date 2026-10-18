@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ledger.application.history import AccountPosting
 from ledger.domain.accounts import Account
 from ledger.domain.journal import JournalEntry
 from ledger.domain.money import MAX_AMOUNT, Currency
@@ -110,3 +111,27 @@ class EntryResponse(BaseModel):
                 for posting in entry.postings
             ],
         )
+
+
+class AccountPostingResponse(BaseModel):
+    entry_id: UUID
+    amount: int
+    currency: Currency
+    memo: str
+    posted_at: datetime
+
+    @classmethod
+    def of(cls, posting: AccountPosting) -> Self:
+        return cls(
+            entry_id=posting.entry_id,
+            amount=posting.amount.amount,
+            currency=posting.amount.currency,
+            memo=posting.memo,
+            posted_at=posting.posted_at,
+        )
+
+
+class HistoryPageResponse(BaseModel):
+    postings: list[AccountPostingResponse]
+    # Pass as ?cursor= for the next, older page; null on the last page.
+    next_cursor: str | None

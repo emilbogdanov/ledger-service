@@ -1,11 +1,12 @@
 from collections.abc import Collection
 
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ledger.application.clients import Client
 from ledger.application.errors import IdempotencyKeyConflictError
+from ledger.application.history import AccountPosting, HistoryCursor
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account, AccountName, OverdraftPolicy
 from ledger.domain.ids import AccountId, ClientId, EntryId
@@ -109,6 +110,7 @@ class SqlEntryRepository:
                     "account_id": posting.account_id,
                     "amount": posting.amount.amount,
                     "currency": posting.amount.currency,
+                    "posted_at": entry.posted_at,
                 }
                 for position, posting in enumerate(entry.postings)
             ],
@@ -135,6 +137,34 @@ class SqlEntryRepository:
             memo=entry.memo,
             posted_at=entry.posted_at,
         )
+
+    async def history(
+        self, account_id: AccountId, *, after: HistoryCursor | None, limit: int
+    ) -> list[AccountPosting]:
+        query = (
+            select(
+                PostingRow.entry_id,
+                PostingRow.amount,
+                PostingRow.currency,
+                JournalEntryRow.memo,
+                PostingRow.posted_at,
+            )
+            .join(JournalEntryRow, JournalEntryRow.id == PostingRow.entry_id)
+            .where(PostingRow.account_id == account_id)
+            .order_by(PostingRow.posted_at.desc(), PostingRow.entry_id.desc())
+            .limit(limit)
+        )
+        if after is not None:
+            # A row comparison, which Postgres can answer from the index directly.
+            query = query.where(
+                tuple_(PostingRow.posted_at, PostingRow.entry_id)
+                < tuple_(after.posted_at, after.entry_id)
+            )
+        rows = await self._session.execute(query)
+        return [
+            AccountPosting(EntryId(entry_id), Money(amount, currency), memo, posted_at)
+            for entry_id, amount, currency, memo, posted_at in rows
+        ]
 
 
 class SqlIdempotencyRecords:

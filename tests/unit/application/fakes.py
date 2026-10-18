@@ -1,12 +1,13 @@
 from collections.abc import Callable, Collection
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import TracebackType
 from typing import Self
 
 from ledger.application.clients import Client
 from ledger.application.errors import IdempotencyKeyConflictError
+from ledger.application.history import AccountPosting, HistoryCursor
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account
 from ledger.domain.ids import AccountId, ClientId, EntryId
@@ -29,6 +30,9 @@ class FixedClock:
 
     def now(self) -> datetime:
         return self.current
+
+    def advance(self, delta: timedelta) -> None:
+        self.current += delta
 
 
 class InMemoryClientRepository:
@@ -84,6 +88,25 @@ class InMemoryEntryRepository:
     async def get(self, client_id: ClientId, entry_id: EntryId) -> JournalEntry | None:
         entry = self._state.entries.get(entry_id)
         return entry if entry is not None and entry.client_id == client_id else None
+
+    async def history(
+        self, account_id: AccountId, *, after: HistoryCursor | None, limit: int
+    ) -> list[AccountPosting]:
+        postings = sorted(
+            (
+                AccountPosting(entry.id, posting.amount, entry.memo, entry.posted_at)
+                for entry in self._state.entries.values()
+                for posting in entry.postings
+                if posting.account_id == account_id
+            ),
+            key=lambda posting: (posting.posted_at, posting.entry_id),
+            reverse=True,
+        )
+        if after is not None:
+            postings = [
+                p for p in postings if (p.posted_at, p.entry_id) < (after.posted_at, after.entry_id)
+            ]
+        return postings[:limit]
 
 
 class InMemoryIdempotencyRecords:

@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     MetaData,
     SmallInteger,
     String,
@@ -89,10 +90,13 @@ class PostingRow(Base):
     amount: Mapped[int] = mapped_column(BigInteger)
     # Always the account's currency; stored so an entry reads back without joining accounts.
     currency: Mapped[Currency] = mapped_column(_currency)
+    # Copied from the entry, so a page of an account's history is one index range scan.
+    posted_at: Mapped[datetime]
 
     __table_args__ = (
         UniqueConstraint("entry_id", "account_id"),
         CheckConstraint("amount <> 0", name="amount_not_zero"),
+        Index("ix_postings_account_id_posted_at_entry_id", "account_id", "posted_at", "entry_id"),
     )
 
 

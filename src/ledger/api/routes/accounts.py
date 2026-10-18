@@ -1,10 +1,19 @@
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Query, Response, status
 
+from ledger.api.cursors import decode_cursor, encode_cursor
 from ledger.api.dependencies import ContainerDep, CurrentClient
 from ledger.api.errors import error_responses
-from ledger.api.schemas import AccountResponse, ChangeOverdraft, OpenAccount
+from ledger.api.schemas import (
+    AccountPostingResponse,
+    AccountResponse,
+    ChangeOverdraft,
+    HistoryPageResponse,
+    OpenAccount,
+)
+from ledger.application.history import MAX_PAGE_SIZE
 from ledger.domain.accounts import AccountName, OverdraftPolicy
 from ledger.domain.ids import AccountId
 
@@ -41,3 +50,23 @@ async def change_overdraft(
         client.id, AccountId(account_id), OverdraftPolicy(body.overdraft_limit)
     )
     return AccountResponse.of(account)
+
+
+@router.get("/{account_id}/postings", responses=error_responses(404))
+async def account_history(
+    account_id: UUID,
+    client: CurrentClient,
+    container: ContainerDep,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
+    cursor: Annotated[str | None, Query(description="next_cursor from the previous page")] = None,
+) -> HistoryPageResponse:
+    page = await container.history().history(
+        client.id,
+        AccountId(account_id),
+        after=decode_cursor(cursor) if cursor is not None else None,
+        limit=limit,
+    )
+    return HistoryPageResponse(
+        postings=[AccountPostingResponse.of(posting) for posting in page.postings],
+        next_cursor=encode_cursor(page.next_cursor) if page.next_cursor is not None else None,
+    )

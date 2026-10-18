@@ -4,6 +4,7 @@ from types import TracebackType
 from typing import Protocol, Self
 
 from ledger.application.clients import Client
+from ledger.application.history import AccountPosting, HistoryCursor
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account
 from ledger.domain.ids import AccountId, ClientId, EntryId
@@ -41,6 +42,12 @@ class EntryRepository(Protocol):
     async def add(self, entry: JournalEntry) -> None: ...
 
     async def get(self, client_id: ClientId, entry_id: EntryId) -> JournalEntry | None: ...
+
+    # The account's postings newest first, ties broken by entry id descending, starting
+    # right after the cursor.
+    async def history(
+        self, account_id: AccountId, *, after: HistoryCursor | None, limit: int
+    ) -> list[AccountPosting]: ...
 
 
 class IdempotencyRecords(Protocol):
