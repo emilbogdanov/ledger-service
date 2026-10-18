@@ -5,7 +5,9 @@ description = "Double-entry ledger API: accounts per currency, balanced journal 
 requires-python = ">=3.13"
 license = "MIT"
 authors = [{ name = "Emil Bogdanov" }]
-dependencies = []
+dependencies = [
+    "pydantic-settings>=2.16",
+]
 
 [dependency-groups]
 dev = [
@@ -39,8 +41,14 @@ ignore = [
 strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
+plugins = ["pydantic.mypy"]
 files = ["src", "tests"]
 mypy_path = "src"
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
 
 [tool.pytest.ini_options]
 minversion = "9.0"
