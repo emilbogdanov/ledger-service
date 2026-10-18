@@ -9,11 +9,9 @@ from ledger.domain.accounts import Account, AccountName, OverdraftPolicy
 from ledger.domain.ids import AccountId, ClientId
 from ledger.domain.money import Currency, Money
 from ledger.infrastructure.db.repositories import SqlAccountRepository
+from tests.integration.clients import ACME, GLOBEX
 
 type Sessions = async_sessionmaker[AsyncSession]
-
-ACME = ClientId(uuid4())
-GLOBEX = ClientId(uuid4())
 
 
 def account(

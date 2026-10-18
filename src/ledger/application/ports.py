@@ -3,6 +3,7 @@ from datetime import datetime
 from types import TracebackType
 from typing import Protocol, Self
 
+from ledger.application.clients import Client
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account
 from ledger.domain.ids import AccountId, ClientId, EntryId
@@ -11,6 +12,12 @@ from ledger.domain.journal import JournalEntry
 
 class Clock(Protocol):
     def now(self) -> datetime: ...
+
+
+class ClientRepository(Protocol):
+    async def add(self, client: Client, *, api_key_hash: str) -> None: ...
+
+    async def find_by_api_key_hash(self, api_key_hash: str) -> Client | None: ...
 
 
 class AccountRepository(Protocol):
@@ -45,6 +52,9 @@ class IdempotencyRecords(Protocol):
 
 
 class UnitOfWork(Protocol):
+    @property
+    def clients(self) -> ClientRepository: ...
+
     @property
     def accounts(self) -> AccountRepository: ...
 

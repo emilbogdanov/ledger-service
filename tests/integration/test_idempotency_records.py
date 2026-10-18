@@ -16,10 +16,10 @@ from ledger.infrastructure.db.repositories import (
     SqlEntryRepository,
     SqlIdempotencyRecords,
 )
+from tests.integration.clients import ACME
 
 type Sessions = async_sessionmaker[AsyncSession]
 
-ACME = ClientId(uuid4())
 KEY = IdempotencyKey("payout-2026-10-18-0001")
 
 

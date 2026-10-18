@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ledger.infrastructure.db.repositories import (
     SqlAccountRepository,
+    SqlClientRepository,
     SqlEntryRepository,
     SqlIdempotencyRecords,
 )
@@ -14,6 +15,7 @@ from ledger.infrastructure.db.repositories import (
 @dataclass(frozen=True, slots=True)
 class _Transaction:
     session: AsyncSession
+    clients: SqlClientRepository
     accounts: SqlAccountRepository
     entries: SqlEntryRepository
     idempotency: SqlIdempotencyRecords
@@ -23,6 +25,10 @@ class SqlUnitOfWork:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
         self._transaction: _Transaction | None = None
+
+    @property
+    def clients(self) -> SqlClientRepository:
+        return self._active().clients
 
     @property
     def accounts(self) -> SqlAccountRepository:
@@ -42,6 +48,7 @@ class SqlUnitOfWork:
         session = self._session_factory()
         self._transaction = _Transaction(
             session=session,
+            clients=SqlClientRepository(session),
             accounts=SqlAccountRepository(session),
             entries=SqlEntryRepository(session),
             idempotency=SqlIdempotencyRecords(session),

@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import (
 )
 from testcontainers.community.postgres import PostgresContainer
 
+from ledger.infrastructure.db.repositories import SqlClientRepository
+from tests.integration.clients import REGISTERED
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 POSTGRES_IMAGE = "postgres:18-alpine"
 
@@ -51,11 +54,17 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
     yield engine
     async with engine.begin() as connection:
         await connection.execute(
-            text("TRUNCATE accounts, journal_entries, postings, idempotency_keys")
+            text("TRUNCATE clients, accounts, journal_entries, postings, idempotency_keys")
         )
     await engine.dispose()
 
 
 @pytest.fixture
-def session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(engine, expire_on_commit=False)
+async def session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with sessions() as session:
+        clients = SqlClientRepository(session)
+        for client in REGISTERED:
+            await clients.add(client, api_key_hash=f"{client.id.hex:0>64}")
+        await session.commit()
+    return sessions

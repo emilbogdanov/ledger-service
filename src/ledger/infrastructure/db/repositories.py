@@ -4,6 +4,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ledger.application.clients import Client
 from ledger.application.errors import IdempotencyKeyConflictError
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account, AccountName, OverdraftPolicy
@@ -12,10 +13,25 @@ from ledger.domain.journal import JournalEntry, Posting
 from ledger.domain.money import Money
 from ledger.infrastructure.db.tables import (
     AccountRow,
+    ClientRow,
     IdempotencyKeyRow,
     JournalEntryRow,
     PostingRow,
 )
+
+
+class SqlClientRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, client: Client, *, api_key_hash: str) -> None:
+        self._session.add(ClientRow(id=client.id, name=client.name, api_key_hash=api_key_hash))
+
+    async def find_by_api_key_hash(self, api_key_hash: str) -> Client | None:
+        row = await self._session.scalar(
+            select(ClientRow).where(ClientRow.api_key_hash == api_key_hash)
+        )
+        return Client(ClientId(row.id), row.name) if row is not None else None
 
 
 class SqlAccountRepository:

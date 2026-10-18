@@ -5,6 +5,7 @@ from datetime import datetime
 from types import TracebackType
 from typing import Self
 
+from ledger.application.clients import Client
 from ledger.application.errors import IdempotencyKeyConflictError
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account
@@ -16,6 +17,7 @@ type KeySlot = tuple[ClientId, IdempotencyKey]
 
 @dataclass
 class LedgerState:
+    clients: dict[str, Client] = field(default_factory=dict)
     accounts: dict[AccountId, Account] = field(default_factory=dict)
     entries: dict[EntryId, JournalEntry] = field(default_factory=dict)
     idempotency: dict[KeySlot, IdempotencyRecord] = field(default_factory=dict)
@@ -27,6 +29,18 @@ class FixedClock:
 
     def now(self) -> datetime:
         return self.current
+
+
+class InMemoryClientRepository:
+    def __init__(self, state: LedgerState) -> None:
+        self._state = state
+
+    async def add(self, client: Client, *, api_key_hash: str) -> None:
+        assert api_key_hash not in self._state.clients, "API key hash stored twice"
+        self._state.clients[api_key_hash] = client
+
+    async def find_by_api_key_hash(self, api_key_hash: str) -> Client | None:
+        return self._state.clients.get(api_key_hash)
 
 
 # Repositories hand out copies, like a database would: a service that changes an account and
@@ -98,6 +112,10 @@ class FakeUnitOfWork:
         self._working: LedgerState | None = None
         self._keys_at_start: set[KeySlot] = set()
         self._locked: set[AccountId] = set()
+
+    @property
+    def clients(self) -> InMemoryClientRepository:
+        return InMemoryClientRepository(self._state())
 
     @property
     def accounts(self) -> InMemoryAccountRepository:

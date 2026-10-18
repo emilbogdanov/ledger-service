@@ -8,10 +8,10 @@ from ledger.domain.ids import AccountId, ClientId, EntryId
 from ledger.domain.journal import JournalEntry, Posting
 from ledger.domain.money import Currency, Money
 from ledger.infrastructure.db.repositories import SqlAccountRepository, SqlEntryRepository
+from tests.integration.clients import ACME
 
 type Sessions = async_sessionmaker[AsyncSession]
 
-ACME = ClientId(uuid4())
 POSTED_AT = datetime(2026, 10, 18, 11, 42, 7, 125_000, tzinfo=UTC)
 
 

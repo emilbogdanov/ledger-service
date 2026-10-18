@@ -29,3 +29,8 @@ class IdempotencyKeyConflictError(ApplicationError):
     def __init__(self, key: IdempotencyKey) -> None:
         super().__init__(f"idempotency key {str(key)!r} is already taken")
         self.key = key
+
+
+class InvalidApiKeyError(ApplicationError):
+    def __init__(self) -> None:
+        super().__init__("API key is missing or invalid")

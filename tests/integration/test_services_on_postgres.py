@@ -12,17 +12,17 @@ from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord, fi
 from ledger.application.postings import PostingService
 from ledger.domain.accounts import AccountName, OverdraftPolicy
 from ledger.domain.errors import InsufficientFundsError
-from ledger.domain.ids import AccountId, ClientId, EntryId
+from ledger.domain.ids import AccountId, EntryId
 from ledger.domain.journal import JournalEntry, Posting
 from ledger.domain.money import Currency, Money
 from ledger.infrastructure.db.repositories import SqlEntryRepository, SqlIdempotencyRecords
 from ledger.infrastructure.db.tables import IdempotencyKeyRow, JournalEntryRow
 from ledger.infrastructure.db.unit_of_work import SqlUnitOfWork
+from tests.integration.clients import ACME
 from tests.unit.application.fakes import FixedClock
 
 type Sessions = async_sessionmaker[AsyncSession]
 
-ACME = ClientId(uuid4())
 CLOCK = FixedClock(datetime(2026, 10, 18, 16, 20, tzinfo=UTC))
 
 

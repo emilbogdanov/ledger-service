@@ -1,7 +1,6 @@
 import asyncio
 import random
 from datetime import UTC, datetime
-from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -11,16 +10,16 @@ from ledger.application.idempotency import IdempotencyKey
 from ledger.application.postings import PostedEntry, PostingService
 from ledger.domain.accounts import Account, AccountName, OverdraftPolicy
 from ledger.domain.errors import InsufficientFundsError
-from ledger.domain.ids import AccountId, ClientId
+from ledger.domain.ids import AccountId
 from ledger.domain.journal import Posting
 from ledger.domain.money import Currency, Money
 from ledger.infrastructure.db.tables import AccountRow, JournalEntryRow, PostingRow
 from ledger.infrastructure.db.unit_of_work import SqlUnitOfWork
+from tests.integration.clients import ACME
 from tests.unit.application.fakes import FixedClock
 
 type Sessions = async_sessionmaker[AsyncSession]
 
-ACME = ClientId(uuid4())
 CLOCK = FixedClock(datetime(2026, 10, 18, 21, 0, tzinfo=UTC))
 WALLETS = 8
 OPENING_BALANCE = 5_000

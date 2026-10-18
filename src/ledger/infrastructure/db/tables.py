@@ -14,6 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from ledger.application.clients import CLIENT_NAME_MAX_LENGTH
 from ledger.application.idempotency import IDEMPOTENCY_KEY_MAX_LENGTH
 from ledger.domain.accounts import ACCOUNT_NAME_MAX_LENGTH
 from ledger.domain.journal import MEMO_MAX_LENGTH
@@ -46,11 +47,20 @@ class Base(DeclarativeBase):
     type_annotation_map = {datetime: DateTime(timezone=True)}  # noqa: RUF012
 
 
+class ClientRow(Base):
+    __tablename__ = "clients"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(CLIENT_NAME_MAX_LENGTH))
+    # SHA-256 hex digest; the unique index doubles as the lookup on every request.
+    api_key_hash: Mapped[str] = mapped_column(String(64), unique=True)
+
+
 class AccountRow(Base):
     __tablename__ = "accounts"
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
-    client_id: Mapped[UUID]
+    client_id: Mapped[UUID] = mapped_column(ForeignKey("clients.id"))
     name: Mapped[str] = mapped_column(String(ACCOUNT_NAME_MAX_LENGTH))
     currency: Mapped[Currency] = mapped_column(_currency)
     # Null means the account has no floor and may run negative without limit.
@@ -64,7 +74,7 @@ class JournalEntryRow(Base):
     __tablename__ = "journal_entries"
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
-    client_id: Mapped[UUID]
+    client_id: Mapped[UUID] = mapped_column(ForeignKey("clients.id"))
     memo: Mapped[str] = mapped_column(String(MEMO_MAX_LENGTH))
     posted_at: Mapped[datetime]
 
@@ -89,7 +99,7 @@ class PostingRow(Base):
 class IdempotencyKeyRow(Base):
     __tablename__ = "idempotency_keys"
 
-    client_id: Mapped[UUID] = mapped_column(primary_key=True)
+    client_id: Mapped[UUID] = mapped_column(ForeignKey("clients.id"), primary_key=True)
     key: Mapped[str] = mapped_column(String(IDEMPOTENCY_KEY_MAX_LENGTH), primary_key=True)
     # SHA-256 hex digest of the request the key was first used for.
     fingerprint: Mapped[str] = mapped_column(String(64))
