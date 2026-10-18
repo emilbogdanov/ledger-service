@@ -15,6 +15,7 @@ dev = [
     "mypy>=2.4",
     "pre-commit>=4.7",
     "pytest>=9.1",
+    "pytest-asyncio>=1.4",
     "ruff>=0.17.1",
 ]
 
@@ -57,5 +58,7 @@ warn_required_dynamic_aliases = true
 minversion = "9.0"
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 xfail_strict = true
 filterwarnings = ["error"]
