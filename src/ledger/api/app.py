@@ -8,7 +8,7 @@ from starlette.types import Lifespan
 
 from ledger.api.container import Container
 from ledger.api.errors import register_error_handlers
-from ledger.api.routes import accounts
+from ledger.api.routes import accounts, entries
 
 
 def create_app(container: Container) -> FastAPI:
@@ -31,7 +31,8 @@ def openapi_schema() -> dict[str, Any]:
 def _routed_app(lifespan: Lifespan[FastAPI] | None = None) -> FastAPI:
     app = FastAPI(title="Ledger", version=version("ledger"), lifespan=lifespan)
     register_error_handlers(app)
-    app.include_router(accounts.router)
+    for router in (accounts.router, entries.router):
+        app.include_router(router)
 
     # Liveness only: answers as long as the process serves requests. It deliberately doesn't
     # touch the database, so a database outage doesn't get every API container restarted.

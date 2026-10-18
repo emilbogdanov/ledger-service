@@ -6,16 +6,36 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from ledger.api.schemas import ErrorResponse
-from ledger.application.errors import InvalidApiKeyError
-from ledger.domain.errors import AccountNotFoundError, CurrencyMismatchError, InvalidValueError
+from ledger.application.errors import (
+    EntryNotFoundError,
+    IdempotencyKeyConflictError,
+    IdempotencyKeyReusedError,
+    InvalidApiKeyError,
+)
+from ledger.domain.errors import (
+    AccountNotFoundError,
+    CurrencyMismatchError,
+    InsufficientFundsError,
+    InvalidEntryError,
+    InvalidValueError,
+    UnbalancedEntryError,
+)
 
 # The one place where business errors become HTTP responses. The code is stable and meant for
 # clients to branch on; the message is for people.
 ERROR_RESPONSES: dict[type[Exception], tuple[int, str]] = {
     InvalidValueError: (422, "invalid_value"),
     CurrencyMismatchError: (422, "currency_mismatch"),
+    InvalidEntryError: (422, "invalid_entry"),
+    UnbalancedEntryError: (422, "unbalanced_entry"),
+    InsufficientFundsError: (422, "insufficient_funds"),
+    IdempotencyKeyReusedError: (422, "idempotency_key_reused"),
     InvalidApiKeyError: (401, "invalid_api_key"),
     AccountNotFoundError: (404, "account_not_found"),
+    EntryNotFoundError: (404, "entry_not_found"),
+    # Only when the retry after a lost race on the key collides again, which takes a third
+    # request using the same key at the same moment.
+    IdempotencyKeyConflictError: (409, "idempotency_key_conflict"),
 }
 
 
