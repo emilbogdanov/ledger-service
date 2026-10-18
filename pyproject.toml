@@ -33,6 +33,7 @@ select = [
 ]
 ignore = [
     "TRY003",   # exception messages are composed in the exception classes where it matters
+    "PLR0913",  # keyword-only constructors for entities legitimately take many fields
 ]
 
 [tool.ruff.lint.per-file-ignores]

@@ -6,10 +6,11 @@ from hypothesis import strategies as st
 
 from ledger.domain.accounts import ACCOUNT_NAME_MAX_LENGTH, Account, AccountName, OverdraftPolicy
 from ledger.domain.errors import CurrencyMismatchError, InsufficientFundsError, InvalidValueError
-from ledger.domain.ids import AccountId
+from ledger.domain.ids import AccountId, ClientId
 from ledger.domain.money import MAX_AMOUNT, Currency, Money
 
 EUR = Currency.EUR
+CLIENT = ClientId(uuid4())
 
 
 def eur(amount: int) -> Money:
@@ -21,6 +22,7 @@ def make_account(
 ) -> Account:
     return Account(
         account_id=AccountId(uuid4()),
+        client_id=CLIENT,
         name=AccountName("Operating account"),
         currency=currency,
         overdraft=overdraft or OverdraftPolicy.none(),
@@ -31,6 +33,7 @@ def make_account(
 def test_opened_account_starts_empty() -> None:
     account = Account.open(
         account_id=AccountId(uuid4()),
+        client_id=CLIENT,
         name=AccountName("Customer wallet"),
         currency=Currency.JPY,
         overdraft=OverdraftPolicy.none(),
@@ -120,6 +123,7 @@ def test_stored_balance_must_be_in_the_account_currency() -> None:
     with pytest.raises(CurrencyMismatchError):
         Account(
             account_id=AccountId(uuid4()),
+            client_id=CLIENT,
             name=AccountName("Settlement"),
             currency=EUR,
             overdraft=OverdraftPolicy.unlimited(),

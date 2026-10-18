@@ -15,13 +15,15 @@ from hypothesis.stateful import (
 
 from ledger.domain.accounts import Account, AccountName, OverdraftPolicy
 from ledger.domain.errors import InsufficientFundsError
-from ledger.domain.ids import AccountId, EntryId
+from ledger.domain.ids import AccountId, ClientId, EntryId
 from ledger.domain.journal import JournalEntry, Posting
 from ledger.domain.money import Currency, Money
 
 # Two currencies are enough to exercise per-currency balancing, and keeping the set small
 # means entries regularly find several accounts to move money between.
 CURRENCIES = (Currency.EUR, Currency.JPY)
+
+CLIENT = ClientId(UUID(int=1))
 
 overdraft_policies = st.none() | st.integers(0, 10_000)
 leg_amounts = st.integers(-20_000, -1) | st.integers(1, 20_000)
@@ -58,6 +60,7 @@ class LedgerMachine(RuleBasedStateMachine):
         ]
         entry = JournalEntry(
             id=EntryId(uuid4()),
+            client_id=CLIENT,
             postings=tuple(postings),
             memo="",
             posted_at=datetime(2026, 10, 18, tzinfo=UTC),
@@ -90,6 +93,7 @@ class LedgerMachine(RuleBasedStateMachine):
         # Sequential ids keep a failing run replayable; random ones would change on every replay.
         account = Account.open(
             account_id=AccountId(UUID(int=number)),
+            client_id=CLIENT,
             name=AccountName(f"{currency} account {number}"),
             currency=currency,
             overdraft=overdraft,

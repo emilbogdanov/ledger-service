@@ -13,13 +13,14 @@ from ledger.domain.errors import (
     InvalidEntryError,
     UnbalancedEntryError,
 )
-from ledger.domain.ids import AccountId, EntryId
+from ledger.domain.ids import AccountId, ClientId, EntryId
 from ledger.domain.journal import MEMO_MAX_LENGTH, JournalEntry, Posting
 from ledger.domain.money import Currency, Money
 from tests.unit.domain.strategies import balanced_postings
 
 EUR = Currency.EUR
 USD = Currency.USD
+CLIENT = ClientId(uuid4())
 POSTED_AT = datetime(2026, 10, 14, 9, 30, tzinfo=UTC)
 
 
@@ -28,12 +29,21 @@ def new_account_id() -> AccountId:
 
 
 def entry(*postings: Posting, memo: str = "Invoice INV-2026-0418") -> JournalEntry:
-    return JournalEntry(id=EntryId(uuid4()), postings=postings, memo=memo, posted_at=POSTED_AT)
+    return JournalEntry(
+        id=EntryId(uuid4()), client_id=CLIENT, postings=postings, memo=memo, posted_at=POSTED_AT
+    )
 
 
-def account(currency: Currency = EUR, *, balance: int = 0, overdraft: int | None = 0) -> Account:
+def account(
+    currency: Currency = EUR,
+    *,
+    balance: int = 0,
+    overdraft: int | None = 0,
+    client_id: ClientId = CLIENT,
+) -> Account:
     return Account(
         account_id=new_account_id(),
+        client_id=client_id,
         name=AccountName(f"{currency} wallet"),
         currency=currency,
         overdraft=OverdraftPolicy(overdraft),
@@ -167,6 +177,20 @@ def test_entry_naming_an_unknown_account_is_refused() -> None:
 
     assert excinfo.value.account_id == missing
     assert funding.balance == Money(0, EUR)
+
+
+def test_entry_cannot_touch_another_clients_account() -> None:
+    funding = account(overdraft=None)
+    elsewhere = account(balance=10_000, client_id=ClientId(uuid4()))
+    payout = entry(
+        Posting(elsewhere.id, Money(-1_000, EUR)), Posting(funding.id, Money(1_000, EUR))
+    )
+
+    with pytest.raises(AccountNotFoundError) as excinfo:
+        payout.apply_to(by_id(funding, elsewhere))
+
+    assert excinfo.value.account_id == elsewhere.id
+    assert elsewhere.balance == Money(10_000, EUR)
 
 
 @given(balanced_postings())

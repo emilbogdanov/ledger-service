@@ -5,3 +5,4 @@ from uuid import UUID
 
 AccountId = NewType("AccountId", UUID)
 EntryId = NewType("EntryId", UUID)
+ClientId = NewType("ClientId", UUID)

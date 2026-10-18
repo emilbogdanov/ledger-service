@@ -7,7 +7,7 @@ from ledger.domain.errors import CurrencyMismatchError, InsufficientFundsError, 
 from ledger.domain.money import MAX_AMOUNT, Money
 
 if TYPE_CHECKING:
-    from ledger.domain.ids import AccountId
+    from ledger.domain.ids import AccountId, ClientId
     from ledger.domain.money import Currency
 
 ACCOUNT_NAME_MAX_LENGTH: Final = 120
@@ -65,6 +65,7 @@ class Account:
         self,
         *,
         account_id: AccountId,
+        client_id: ClientId,
         name: AccountName,
         currency: Currency,
         overdraft: OverdraftPolicy,
@@ -73,6 +74,7 @@ class Account:
         if balance.currency is not currency:
             raise CurrencyMismatchError(f"a {currency} account cannot hold a {balance} balance")
         self._id = account_id
+        self._client_id = client_id
         self._name = name
         self._currency = currency
         self._overdraft = overdraft
@@ -83,12 +85,14 @@ class Account:
         cls,
         *,
         account_id: AccountId,
+        client_id: ClientId,
         name: AccountName,
         currency: Currency,
         overdraft: OverdraftPolicy,
     ) -> Account:
         return cls(
             account_id=account_id,
+            client_id=client_id,
             name=name,
             currency=currency,
             overdraft=overdraft,
@@ -98,6 +102,10 @@ class Account:
     @property
     def id(self) -> AccountId:
         return self._id
+
+    @property
+    def client_id(self) -> ClientId:
+        return self._client_id
 
     @property
     def name(self) -> AccountName:

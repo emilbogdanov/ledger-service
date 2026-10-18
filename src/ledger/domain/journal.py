@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from ledger.domain.accounts import Account
-    from ledger.domain.ids import AccountId, EntryId
+    from ledger.domain.ids import AccountId, ClientId, EntryId
     from ledger.domain.money import Currency
 
 MIN_POSTINGS: Final = 2
@@ -33,6 +33,7 @@ class Posting:
 @dataclass(frozen=True, slots=True, kw_only=True)
 class JournalEntry:
     id: EntryId
+    client_id: ClientId
     postings: tuple[Posting, ...]
     memo: str
     posted_at: datetime
@@ -53,7 +54,8 @@ class JournalEntry:
 
     def apply_to(self, accounts: Mapping[AccountId, Account]) -> None:
         targets = [
-            (_find(accounts, posting.account_id), posting.amount) for posting in self.postings
+            (self._account_for(accounts, posting.account_id), posting.amount)
+            for posting in self.postings
         ]
         # Every posting is checked before any balance moves, so a refused entry leaves all of
         # its accounts exactly as they were.
@@ -61,6 +63,13 @@ class JournalEntry:
             account.ensure_can_post(amount)
         for account, amount in targets:
             account.post(amount)
+
+    # Another client's account is reported as missing, so account ids can't be probed.
+    def _account_for(self, accounts: Mapping[AccountId, Account], account_id: AccountId) -> Account:
+        account = accounts.get(account_id)
+        if account is None or account.client_id != self.client_id:
+            raise AccountNotFoundError(account_id)
+        return account
 
 
 # Balancing is per currency: an FX entry moves euros between euro accounts and dollars between
@@ -70,10 +79,3 @@ def _imbalances(postings: Iterable[Posting]) -> list[Money]:
     for posting in postings:
         totals[posting.amount.currency] += posting.amount.amount
     return [Money(total, currency) for currency, total in totals.items() if total]
-
-
-def _find(accounts: Mapping[AccountId, Account], account_id: AccountId) -> Account:
-    try:
-        return accounts[account_id]
-    except KeyError:
-        raise AccountNotFoundError(account_id) from None
