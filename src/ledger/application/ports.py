@@ -39,6 +39,8 @@ class EntryRepository(Protocol):
 class IdempotencyRecords(Protocol):
     async def find(self, client_id: ClientId, key: IdempotencyKey) -> IdempotencyRecord | None: ...
 
+    # Raises IdempotencyKeyConflictError if another request already took the key. A store
+    # may only find out at commit, so UnitOfWork.commit() can raise it as well.
     async def add(self, record: IdempotencyRecord) -> None: ...
 
 
@@ -62,6 +64,4 @@ class UnitOfWork(Protocol):
         tb: TracebackType | None,
     ) -> None: ...
 
-    # Raises IdempotencyKeyConflictError if another request stored one of this block's
-    # idempotency keys first.
     async def commit(self) -> None: ...
