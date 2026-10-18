@@ -1,0 +1,61 @@
+import os
+from collections.abc import AsyncIterator, Iterator
+from pathlib import Path
+
+import pytest
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from testcontainers.community.postgres import PostgresContainer
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+POSTGRES_IMAGE = "postgres:18-alpine"
+
+
+@pytest.fixture(scope="session")
+def database_url() -> Iterator[str]:
+    # Set LEDGER_TEST_DATABASE_URL to run against a database you already have. The tests
+    # drop and recreate its schema, so never point it at one whose data you want to keep.
+    configured = os.environ.get("LEDGER_TEST_DATABASE_URL")
+    if configured:
+        yield configured
+        return
+    with PostgresContainer(POSTGRES_IMAGE, driver="asyncpg") as postgres:
+        yield postgres.get_connection_url()
+
+
+@pytest.fixture(scope="session")
+def alembic_config(database_url: str) -> Config:
+    config = Config(REPO_ROOT / "alembic.ini")
+    # The .ini parser treats % as interpolation; URL-encoded passwords contain it.
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+    config.attributes["configure_logger"] = False
+    return config
+
+
+@pytest.fixture(scope="session", autouse=True)
+def migrated_schema(alembic_config: Config) -> None:
+    command.downgrade(alembic_config, "base")
+    command.upgrade(alembic_config, "head")
+
+
+@pytest.fixture
+async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
+    engine = create_async_engine(database_url)
+    yield engine
+    async with engine.begin() as connection:
+        await connection.execute(
+            text("TRUNCATE accounts, journal_entries, postings, idempotency_keys")
+        )
+    await engine.dispose()
+
+
+@pytest.fixture
+def session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(engine, expire_on_commit=False)

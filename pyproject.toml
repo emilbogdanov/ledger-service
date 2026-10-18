@@ -6,7 +6,10 @@ requires-python = ">=3.13"
 license = "MIT"
 authors = [{ name = "Emil Bogdanov" }]
 dependencies = [
+    "alembic>=1.20",
+    "asyncpg>=0.32",
     "pydantic-settings>=2.16",
+    "sqlalchemy[asyncio]>=2.1",
 ]
 
 [dependency-groups]
@@ -17,6 +20,7 @@ dev = [
     "pytest>=9.1",
     "pytest-asyncio>=1.4",
     "ruff>=0.17.1",
+    "testcontainers[postgres]>=4.15",
 ]
 
 [build-system]
@@ -46,7 +50,7 @@ strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
 plugins = ["pydantic.mypy"]
-files = ["src", "tests"]
+files = ["src", "tests", "migrations"]
 mypy_path = "src"
 
 [tool.pydantic-mypy]
@@ -61,4 +65,9 @@ addopts = ["-ra", "--strict-markers", "--strict-config"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 xfail_strict = true
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # docker-py warns when a credential helper named in ~/.docker/config.json isn't on PATH;
+    # that is about the machine, not this code, so show it without failing the run.
+    "default:docker-credential-:UserWarning",
+]
