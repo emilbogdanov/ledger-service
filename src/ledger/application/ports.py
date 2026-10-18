@@ -26,6 +26,7 @@ class AccountRepository(Protocol):
         self, client_id: ClientId, account_ids: Collection[AccountId]
     ) -> dict[AccountId, Account]: ...
 
+    # Only for accounts locked in the current unit of work.
     async def update(self, account: Account) -> None: ...
 
 

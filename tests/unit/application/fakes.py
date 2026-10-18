@@ -32,8 +32,9 @@ class FixedClock:
 # Repositories hand out copies, like a database would: a service that changes an account and
 # forgets to save it must fail the tests instead of passing by accident.
 class InMemoryAccountRepository:
-    def __init__(self, state: LedgerState) -> None:
+    def __init__(self, state: LedgerState, locked: set[AccountId]) -> None:
         self._state = state
+        self._locked = locked
 
     async def add(self, account: Account) -> None:
         assert account.id not in self._state.accounts, f"account {account.id} added twice"
@@ -49,10 +50,12 @@ class InMemoryAccountRepository:
         self, client_id: ClientId, account_ids: Collection[AccountId]
     ) -> dict[AccountId, Account]:
         found = [await self.get(client_id, account_id) for account_id in account_ids]
-        return {account.id: account for account in found if account is not None}
+        accounts = {account.id: account for account in found if account is not None}
+        self._locked.update(accounts)
+        return accounts
 
     async def update(self, account: Account) -> None:
-        assert account.id in self._state.accounts, f"account {account.id} was never added"
+        assert account.id in self._locked, f"account {account.id} updated without a lock"
         self._state.accounts[account.id] = deepcopy(account)
 
 
@@ -94,10 +97,11 @@ class FakeUnitOfWork:
         self.before_next_commit: Callable[[LedgerState], object] | None = None
         self._working: LedgerState | None = None
         self._keys_at_start: set[KeySlot] = set()
+        self._locked: set[AccountId] = set()
 
     @property
     def accounts(self) -> InMemoryAccountRepository:
-        return InMemoryAccountRepository(self._state())
+        return InMemoryAccountRepository(self._state(), self._locked)
 
     @property
     def entries(self) -> InMemoryEntryRepository:
@@ -111,6 +115,7 @@ class FakeUnitOfWork:
         assert self._working is None, "unit of work entered twice"
         self._working = deepcopy(self.committed)
         self._keys_at_start = set(self.committed.idempotency)
+        self._locked = set()
         return self
 
     async def __aexit__(
