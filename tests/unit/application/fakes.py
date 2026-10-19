@@ -7,6 +7,7 @@ from typing import Self
 
 from ledger.application.clients import Client
 from ledger.application.errors import IdempotencyKeyConflictError
+from ledger.application.events import Event
 from ledger.application.history import AccountPosting, HistoryCursor
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account
@@ -22,6 +23,7 @@ class LedgerState:
     accounts: dict[AccountId, Account] = field(default_factory=dict)
     entries: dict[EntryId, JournalEntry] = field(default_factory=dict)
     idempotency: dict[KeySlot, IdempotencyRecord] = field(default_factory=dict)
+    outbox: list[Event] = field(default_factory=list)
 
 
 class FixedClock:
@@ -123,6 +125,14 @@ class InMemoryIdempotencyRecords:
         self._state.idempotency[slot] = record
 
 
+class InMemoryOutbox:
+    def __init__(self, state: LedgerState) -> None:
+        self._state = state
+
+    async def add(self, event: Event) -> None:
+        self._state.outbox.append(event)
+
+
 # Each block works on a private copy of the committed state, so leaving it without commit()
 # discards everything it did, the way a rolled-back transaction would.
 class FakeUnitOfWork:
@@ -151,6 +161,10 @@ class FakeUnitOfWork:
     @property
     def idempotency(self) -> InMemoryIdempotencyRecords:
         return InMemoryIdempotencyRecords(self._state())
+
+    @property
+    def outbox(self) -> InMemoryOutbox:
+        return InMemoryOutbox(self._state())
 
     async def __aenter__(self) -> Self:
         assert self._working is None, "unit of work entered twice"

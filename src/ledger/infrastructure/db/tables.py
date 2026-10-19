@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -7,12 +8,15 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Identity,
     Index,
     MetaData,
     SmallInteger,
     String,
     UniqueConstraint,
+    text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from ledger.application.clients import CLIENT_NAME_MAX_LENGTH
@@ -108,3 +112,20 @@ class IdempotencyKeyRow(Base):
     # SHA-256 hex digest of the request the key was first used for.
     fingerprint: Mapped[str] = mapped_column(String(64))
     entry_id: Mapped[UUID] = mapped_column(ForeignKey("journal_entries.id"))
+
+
+class OutboxEventRow(Base):
+    __tablename__ = "outbox_events"
+
+    # Also the event id consumers deduplicate on, since delivery is at least once.
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    type: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    occurred_at: Mapped[datetime]
+    published_at: Mapped[datetime | None]
+
+    __table_args__ = (
+        # Holds only what the relay still has to send, so it stays small however much
+        # published history accumulates.
+        Index("ix_outbox_events_unpublished", "id", postgresql_where=text("published_at IS NULL")),
+    )

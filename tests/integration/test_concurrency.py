@@ -38,7 +38,7 @@ def postings(sessions: Sessions) -> PostingService:
 
 
 async def open_wallets(sessions: Sessions) -> tuple[AccountId, list[Account]]:
-    accounts = AccountService(SqlUnitOfWork(sessions))
+    accounts = AccountService(SqlUnitOfWork(sessions), CLOCK)
     funding = await accounts.open_account(
         ACME,
         name=AccountName("Bank settlement"),

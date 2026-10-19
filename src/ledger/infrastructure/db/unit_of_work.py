@@ -9,6 +9,7 @@ from ledger.infrastructure.db.repositories import (
     SqlClientRepository,
     SqlEntryRepository,
     SqlIdempotencyRecords,
+    SqlOutbox,
 )
 
 
@@ -19,6 +20,7 @@ class _Transaction:
     accounts: SqlAccountRepository
     entries: SqlEntryRepository
     idempotency: SqlIdempotencyRecords
+    outbox: SqlOutbox
 
 
 class SqlUnitOfWork:
@@ -42,6 +44,10 @@ class SqlUnitOfWork:
     def idempotency(self) -> SqlIdempotencyRecords:
         return self._active().idempotency
 
+    @property
+    def outbox(self) -> SqlOutbox:
+        return self._active().outbox
+
     async def __aenter__(self) -> Self:
         if self._transaction is not None:
             raise RuntimeError("unit of work is already in use; blocks can't be nested")
@@ -52,6 +58,7 @@ class SqlUnitOfWork:
             accounts=SqlAccountRepository(session),
             entries=SqlEntryRepository(session),
             idempotency=SqlIdempotencyRecords(session),
+            outbox=SqlOutbox(session),
         )
         return self
 

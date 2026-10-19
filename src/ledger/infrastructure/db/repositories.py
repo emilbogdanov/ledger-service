@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ledger.application.clients import Client
 from ledger.application.errors import IdempotencyKeyConflictError
+from ledger.application.events import Event
 from ledger.application.history import AccountPosting, HistoryCursor
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account, AccountName, OverdraftPolicy
@@ -17,6 +18,7 @@ from ledger.infrastructure.db.tables import (
     ClientRow,
     IdempotencyKeyRow,
     JournalEntryRow,
+    OutboxEventRow,
     PostingRow,
 )
 
@@ -198,6 +200,18 @@ class SqlIdempotencyRecords:
         )
         if inserted is None:
             raise IdempotencyKeyConflictError(record.key)
+
+
+class SqlOutbox:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, event: Event) -> None:
+        self._session.add(
+            OutboxEventRow(
+                type=event.type, payload=dict(event.payload), occurred_at=event.occurred_at
+            )
+        )
 
 
 def _to_account(row: AccountRow) -> Account:

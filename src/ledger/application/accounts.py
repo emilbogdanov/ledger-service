@@ -1,6 +1,7 @@
 from uuid import uuid4
 
-from ledger.application.ports import UnitOfWork
+from ledger.application.events import account_opened
+from ledger.application.ports import Clock, UnitOfWork
 from ledger.domain.accounts import Account, AccountName, OverdraftPolicy
 from ledger.domain.errors import AccountNotFoundError
 from ledger.domain.ids import AccountId, ClientId
@@ -8,8 +9,9 @@ from ledger.domain.money import Currency
 
 
 class AccountService:
-    def __init__(self, uow: UnitOfWork) -> None:
+    def __init__(self, uow: UnitOfWork, clock: Clock) -> None:
         self._uow = uow
+        self._clock = clock
 
     async def open_account(
         self,
@@ -28,6 +30,7 @@ class AccountService:
         )
         async with self._uow as uow:
             await uow.accounts.add(account)
+            await uow.outbox.add(account_opened(account, at=self._clock.now()))
             await uow.commit()
         return account
 

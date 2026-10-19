@@ -4,6 +4,7 @@ from types import TracebackType
 from typing import Protocol, Self
 
 from ledger.application.clients import Client
+from ledger.application.events import Event
 from ledger.application.history import AccountPosting, HistoryCursor
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account
@@ -58,6 +59,12 @@ class IdempotencyRecords(Protocol):
     async def add(self, record: IdempotencyRecord) -> None: ...
 
 
+class Outbox(Protocol):
+    # Written in the caller's transaction, so an event exists exactly when the change it
+    # describes was committed.
+    async def add(self, event: Event) -> None: ...
+
+
 class UnitOfWork(Protocol):
     @property
     def clients(self) -> ClientRepository: ...
@@ -70,6 +77,9 @@ class UnitOfWork(Protocol):
 
     @property
     def idempotency(self) -> IdempotencyRecords: ...
+
+    @property
+    def outbox(self) -> Outbox: ...
 
     async def __aenter__(self) -> Self: ...
 

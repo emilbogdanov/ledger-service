@@ -5,6 +5,7 @@ import pytest
 
 from ledger.application.accounts import AccountService
 from ledger.application.errors import EntryNotFoundError, IdempotencyKeyReusedError
+from ledger.application.events import entry_posted
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord, fingerprint
 from ledger.application.postings import PostingService
 from ledger.domain.accounts import AccountName, OverdraftPolicy
@@ -39,7 +40,7 @@ def uow() -> FakeUnitOfWork:
 
 @pytest.fixture
 def accounts(uow: FakeUnitOfWork) -> AccountService:
-    return AccountService(uow)
+    return AccountService(uow, FixedClock(NOW))
 
 
 @pytest.fixture
@@ -112,6 +113,57 @@ async def test_transfer_moves_money_and_records_the_entry(
     assert await balance(accounts, wallet) == eur(7_501)
     assert await balance(accounts, merchant) == eur(2_499)
     assert await postings.get_entry(ACME, posted.entry.id) == posted.entry
+
+
+async def test_posted_entry_is_announced_in_the_same_commit(
+    postings: PostingService, uow: FakeUnitOfWork, wallet: AccountId, merchant: AccountId
+) -> None:
+    announced = len(uow.committed.outbox)
+
+    posted = await postings.transfer(
+        ACME,
+        source=wallet,
+        destination=merchant,
+        amount=eur(300),
+        memo="",
+        idempotency_key=key("order-10500"),
+    )
+
+    assert uow.committed.outbox[announced:] == [entry_posted(posted.entry)]
+
+
+async def test_refused_or_replayed_entries_announce_nothing(
+    postings: PostingService, uow: FakeUnitOfWork, wallet: AccountId, merchant: AccountId
+) -> None:
+    await postings.transfer(
+        ACME,
+        source=wallet,
+        destination=merchant,
+        amount=eur(300),
+        memo="",
+        idempotency_key=key("order-10501"),
+    )
+    announced = len(uow.committed.outbox)
+
+    await postings.transfer(
+        ACME,
+        source=wallet,
+        destination=merchant,
+        amount=eur(300),
+        memo="",
+        idempotency_key=key("order-10501"),
+    )
+    with pytest.raises(InsufficientFundsError):
+        await postings.transfer(
+            ACME,
+            source=wallet,
+            destination=merchant,
+            amount=eur(1_000_000),
+            memo="",
+            idempotency_key=key("order-10502"),
+        )
+
+    assert len(uow.committed.outbox) == announced
 
 
 async def test_entry_can_split_money_across_several_accounts(

@@ -1,16 +1,19 @@
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 
 from ledger.application.accounts import AccountService
+from ledger.application.events import account_opened
 from ledger.domain.accounts import AccountName, OverdraftPolicy
 from ledger.domain.errors import AccountNotFoundError
 from ledger.domain.ids import AccountId, ClientId
 from ledger.domain.money import Currency, Money
-from tests.unit.application.fakes import FakeUnitOfWork
+from tests.unit.application.fakes import FakeUnitOfWork, FixedClock
 
 ACME = ClientId(uuid4())
 GLOBEX = ClientId(uuid4())
+OPENED_AT = datetime(2026, 10, 18, 10, 15, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -20,7 +23,7 @@ def uow() -> FakeUnitOfWork:
 
 @pytest.fixture
 def service(uow: FakeUnitOfWork) -> AccountService:
-    return AccountService(uow)
+    return AccountService(uow, FixedClock(OPENED_AT))
 
 
 async def open_wallet(service: AccountService, client_id: ClientId = ACME) -> AccountId:
@@ -42,6 +45,13 @@ async def test_opened_account_is_stored_empty(service: AccountService, uow: Fake
     assert str(stored.name) == "Merchant payouts"
     assert stored.balance == Money.zero(Currency.EUR)
     assert uow.commits == 1
+
+
+async def test_opened_account_is_announced(service: AccountService, uow: FakeUnitOfWork) -> None:
+    account_id = await open_wallet(service)
+
+    stored = await service.get_account(ACME, account_id)
+    assert uow.committed.outbox == [account_opened(stored, at=OPENED_AT)]
 
 
 async def test_unknown_account_is_not_found(service: AccountService) -> None:

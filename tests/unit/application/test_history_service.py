@@ -15,6 +15,7 @@ from tests.unit.application.fakes import FakeUnitOfWork, FixedClock
 
 ACME = ClientId(uuid4())
 GLOBEX = ClientId(uuid4())
+OPENED_AT = datetime(2026, 10, 18, 8, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -33,7 +34,7 @@ def history(uow: FakeUnitOfWork) -> HistoryService:
 
 
 async def open_account(uow: FakeUnitOfWork, name: str, client_id: ClientId = ACME) -> AccountId:
-    account = await AccountService(uow).open_account(
+    account = await AccountService(uow, FixedClock(OPENED_AT)).open_account(
         client_id,
         name=AccountName(name),
         currency=Currency.EUR,

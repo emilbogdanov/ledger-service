@@ -24,7 +24,7 @@ class Container:
         return ClientService(self.uow_factory())
 
     def accounts(self) -> AccountService:
-        return AccountService(self.uow_factory())
+        return AccountService(self.uow_factory(), self.clock)
 
     def postings(self) -> PostingService:
         return PostingService(self.uow_factory(), self.clock)

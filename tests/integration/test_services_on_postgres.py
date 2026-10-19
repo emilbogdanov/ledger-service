@@ -31,7 +31,7 @@ def eur(amount: int) -> Money:
 
 
 def accounts_service(sessions: Sessions) -> AccountService:
-    return AccountService(SqlUnitOfWork(sessions))
+    return AccountService(SqlUnitOfWork(sessions), CLOCK)
 
 
 # One service, and so one unit of work, per concurrent caller, as each API request gets.

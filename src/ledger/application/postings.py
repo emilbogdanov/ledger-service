@@ -7,6 +7,7 @@ from ledger.application.errors import (
     IdempotencyKeyConflictError,
     IdempotencyKeyReusedError,
 )
+from ledger.application.events import entry_posted
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord, fingerprint
 from ledger.application.ports import Clock, UnitOfWork
 from ledger.domain.errors import InvalidValueError
@@ -97,6 +98,7 @@ class PostingService:
             for account in accounts.values():
                 await uow.accounts.update(account)
             await uow.entries.add(entry)
+            await uow.outbox.add(entry_posted(entry))
             await uow.idempotency.add(IdempotencyRecord(client_id, key, request, entry.id))
             await uow.commit()
         return PostedEntry(entry, replayed=False)
