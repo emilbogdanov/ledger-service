@@ -7,6 +7,7 @@ from ledger.application.clients import Client
 from ledger.application.events import Event, PendingEvent
 from ledger.application.history import AccountPosting, HistoryCursor
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
+from ledger.application.reconciliation import AuditFindings
 from ledger.domain.accounts import Account
 from ledger.domain.ids import AccountId, ClientId, EntryId
 from ledger.domain.journal import JournalEntry
@@ -74,6 +75,12 @@ class Outbox(Protocol):
 class EventPublisher(Protocol):
     # All or nothing is not promised: after a failure some of the events may already be out.
     async def publish(self, events: Sequence[PendingEvent]) -> None: ...
+
+
+class LedgerAudit(Protocol):
+    # Runs every check against one snapshot of the ledger, so it can run while transfers
+    # continue and still never reports a discrepancy that is only a write in progress.
+    async def examine(self, *, limit: int) -> AuditFindings: ...
 
 
 class UnitOfWork(Protocol):

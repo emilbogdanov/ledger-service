@@ -83,12 +83,18 @@ class Money:
         return self.amount >= other.amount
 
     def __str__(self) -> str:
-        places = self.currency.decimal_places
-        whole, fraction = divmod(abs(self.amount), 10**places)
-        digits = f"{whole}.{fraction:0{places}d}" if places else str(whole)
-        sign = "-" if self.amount < 0 else ""
-        return f"{sign}{digits} {self.currency}"
+        return format_minor_units(self.amount, self.currency)
 
     def _require_same_currency(self, other: Money) -> None:
         if other.currency is not self.currency:
             raise CurrencyMismatchError(f"cannot combine {self.currency} with {other.currency}")
+
+
+# Separate from Money so amounts outside the supported range can still be shown, e.g. when
+# reconciliation reports a sum that a corrupted ledger has pushed past it.
+def format_minor_units(amount: int, currency: Currency) -> str:
+    places = currency.decimal_places
+    whole, fraction = divmod(abs(amount), 10**places)
+    digits = f"{whole}.{fraction:0{places}d}" if places else str(whole)
+    sign = "-" if amount < 0 else ""
+    return f"{sign}{digits} {currency}"
