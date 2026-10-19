@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import signal
 from contextlib import suppress
 
@@ -16,6 +15,7 @@ from ledger.infrastructure.clock import SystemClock
 from ledger.infrastructure.db.audit import SqlLedgerAudit
 from ledger.infrastructure.db.unit_of_work import SqlUnitOfWork
 from ledger.infrastructure.redis_stream import RedisStreamPublisher
+from ledger.logs import configure_logging
 from ledger.worker import OutboxWorker
 
 # asyncpg timeouts, in seconds: fail fast when the database is unreachable or a query hangs,
@@ -40,16 +40,10 @@ def build_container(settings: Settings) -> Container:
     )
 
 
-def configure_logging(settings: Settings) -> None:
-    logging.basicConfig(
-        level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s"
-    )
-
-
 def app() -> FastAPI:
     # Run with: uvicorn --factory ledger.main:app
     settings = Settings()
-    configure_logging(settings)
+    configure_logging(settings.log_level, settings.log_format)
     return create_app(build_container(settings))
 
 

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     )
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    # JSON for anything that ships logs somewhere; text is easier to read in a terminal.
+    log_format: Literal["json", "text"] = "json"
     database_url: PostgresDsn
     redis_url: RedisDsn
     events_stream: str = Field(default="ledger:events", min_length=1)

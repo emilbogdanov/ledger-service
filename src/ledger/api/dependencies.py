@@ -19,13 +19,17 @@ ContainerDep = Annotated[Container, Depends(get_container)]
 
 
 async def get_current_client(
+    request: Request,
     container: ContainerDep,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> Client:
     # auto_error is off so a missing key goes through the same 401 path as a wrong one.
     if credentials is None:
         raise InvalidApiKeyError
-    return await container.clients().authenticate(credentials.credentials)
+    client = await container.clients().authenticate(credentials.credentials)
+    # For the request log line, which is written outside the dependency's scope.
+    request.state.client_id = str(client.id)
+    return client
 
 
 CurrentClient = Annotated[Client, Depends(get_current_client)]

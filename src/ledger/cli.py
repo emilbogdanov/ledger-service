@@ -12,7 +12,8 @@ from ledger.application.reconciliation import ReconciliationReport
 from ledger.config import Settings
 from ledger.domain.errors import InvalidValueError
 from ledger.domain.money import format_minor_units
-from ledger.main import build_container, configure_logging, reconcile, run_worker
+from ledger.logs import configure_logging
+from ledger.main import build_container, reconcile, run_worker
 
 # Distinct from 1, which means the command itself failed, so a scheduler can alert on a ledger
 # that doesn't add up without confusing it with a database that was unreachable.
@@ -88,7 +89,7 @@ def _print_openapi() -> int:
 
 def _worker() -> int:
     settings = Settings()
-    configure_logging(settings)
+    configure_logging(settings.log_level, settings.log_format)
     # Ctrl+C on Windows, where asyncio can't install signal handlers, arrives as this.
     with suppress(KeyboardInterrupt):
         asyncio.run(run_worker(settings))
