@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import signal
 from contextlib import suppress
 
@@ -18,6 +19,8 @@ from ledger.infrastructure.db.unit_of_work import SqlUnitOfWork
 from ledger.infrastructure.redis_stream import RedisStreamPublisher
 from ledger.logs import configure_logging
 from ledger.worker import OutboxMetrics, OutboxWorker
+
+logger = logging.getLogger("ledger.worker")
 
 # asyncpg timeouts, in seconds: fail fast when the database is unreachable or a query hangs,
 # instead of holding the request (and a pool connection) open indefinitely.
@@ -83,8 +86,17 @@ async def run_worker(settings: Settings) -> None:
         # Windows has no signal handlers in asyncio; Ctrl+C arrives as KeyboardInterrupt there.
         with suppress(NotImplementedError):
             loop.add_signal_handler(signum, stop.set)
+    logger.info(
+        "outbox worker started",
+        extra={
+            "stream": settings.events_stream,
+            "batch_size": settings.outbox_batch_size,
+            "metrics_port": settings.worker_metrics_port or None,
+        },
+    )
     try:
         await worker.run(stop)
+        logger.info("outbox worker stopped")
     finally:
         if metrics_server is not None:
             metrics_server.shutdown()

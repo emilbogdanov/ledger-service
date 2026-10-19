@@ -1,0 +1,20 @@
+# Local secrets must never end up in an image layer.
+.env
+.env.*
+!.env.example
+
+.git
+.github
+.venv
+**/__pycache__
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.hypothesis
+.coverage
+htmlcov
+
+tests
+Dockerfile
+.dockerignore
+docker-compose.yml

@@ -84,3 +84,34 @@ def test_configured_format_reaches_stdout(
     out = capsys.readouterr().out
     assert out.startswith(starts_with)
     assert "configured" in out
+
+
+def test_uvicorn_lines_go_through_the_same_handler(capsys: pytest.CaptureFixture[str]) -> None:
+    server = logging.getLogger("uvicorn.error")
+    plain = logging.StreamHandler(sys.stderr)
+    server.addHandler(plain)
+    server.propagate = False
+    root = logging.getLogger()
+    saved = root.handlers[:], root.level
+    try:
+        configure_logging("INFO", "json")
+        server.info("Application startup complete.")
+    finally:
+        root.handlers[:], level = saved
+        root.setLevel(level)
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["logger"] == "uvicorn.error"
+    assert captured.err == ""
+    assert plain not in server.handlers
+    # uvicorn writes access lines only to a logger that has somewhere to send them.
+    assert not logging.getLogger("uvicorn.access").hasHandlers()
+
+
+def test_uvicorn_colour_copies_of_messages_are_dropped() -> None:
+    started = record("Started server process [%d]", 7, color_message="Started \x1b[36m%d\x1b[0m")
+
+    line = json.loads(JsonFormatter().format(started))
+
+    assert "color_message" not in line
+    assert line["message"] == "Started server process [7]"
