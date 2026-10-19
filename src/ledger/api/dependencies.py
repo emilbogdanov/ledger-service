@@ -4,6 +4,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ledger.api.container import Container
+from ledger.api.metrics import ApiMetrics
 from ledger.application.clients import Client
 from ledger.application.errors import InvalidApiKeyError
 
@@ -16,6 +17,14 @@ def get_container(request: Request) -> Container:
 
 
 ContainerDep = Annotated[Container, Depends(get_container)]
+
+
+def get_metrics(request: Request) -> ApiMetrics:
+    metrics: ApiMetrics = request.app.state.metrics
+    return metrics
+
+
+MetricsDep = Annotated[ApiMetrics, Depends(get_metrics)]
 
 
 async def get_current_client(

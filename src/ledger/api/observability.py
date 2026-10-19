@@ -6,7 +6,9 @@ from typing import Final
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from ledger.api.metrics import ApiMetrics
 from ledger.logs import request_id
 
 logger = logging.getLogger("ledger.requests")
@@ -21,7 +23,15 @@ _UNOBSERVED_PATHS: Final = frozenset({"/health", "/metrics"})
 type CallNext = Callable[[Request], Awaitable[Response]]
 
 
-def observe_requests(app: FastAPI) -> None:
+def observe_requests(app: FastAPI, metrics: ApiMetrics) -> None:
+    app.state.metrics = metrics
+
+    # Unauthenticated, like most scrape targets: keep it off the public network rather than
+    # behind an API key Prometheus would need to hold.
+    @app.get("/metrics", include_in_schema=False)
+    async def expose_metrics() -> Response:
+        return Response(generate_latest(metrics.registry), media_type=CONTENT_TYPE_LATEST)
+
     @app.middleware("http")
     async def log_request(request: Request, call_next: CallNext) -> Response:
         incoming = request.headers.get(REQUEST_ID_HEADER, "")
@@ -32,11 +42,11 @@ def observe_requests(app: FastAPI) -> None:
             response = await call_next(request)
         except Exception:
             # Answered with a 500 further out; logged here, where the request id is still set.
-            _log(request, 500, started, level=logging.ERROR, exc_info=True)
+            _observe(metrics, request, 500, started, level=logging.ERROR, exc_info=True)
             raise
         else:
             response.headers[REQUEST_ID_HEADER] = current
-            _log(request, response.status_code, started)
+            _observe(metrics, request, response.status_code, started)
             return response
         finally:
             request_id.reset(token)
@@ -50,7 +60,8 @@ def route_of(request: Request) -> str:
     return str(getattr(route, "path", "unmatched"))
 
 
-def _log(
+def _observe(
+    metrics: ApiMetrics,
     request: Request,
     status: int,
     started: float,
@@ -60,6 +71,10 @@ def _log(
 ) -> None:
     if request.url.path in _UNOBSERVED_PATHS:
         return
+    seconds = time.perf_counter() - started
+    route = route_of(request)
+    metrics.requests.labels(request.method, route, str(status)).inc()
+    metrics.latency.labels(request.method, route).observe(seconds)
     logger.log(
         level,
         "%s %s %d",
@@ -69,9 +84,9 @@ def _log(
         exc_info=exc_info,
         extra={
             "method": request.method,
-            "route": route_of(request),
+            "route": route,
             "status": status,
-            "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            "duration_ms": round(seconds * 1000, 2),
             "client_id": getattr(request.state, "client_id", None),
         },
     )

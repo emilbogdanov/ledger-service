@@ -3,6 +3,7 @@ import signal
 from contextlib import suppress
 
 from fastapi import FastAPI
+from prometheus_client import CollectorRegistry, start_http_server
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -16,7 +17,7 @@ from ledger.infrastructure.db.audit import SqlLedgerAudit
 from ledger.infrastructure.db.unit_of_work import SqlUnitOfWork
 from ledger.infrastructure.redis_stream import RedisStreamPublisher
 from ledger.logs import configure_logging
-from ledger.worker import OutboxWorker
+from ledger.worker import OutboxMetrics, OutboxWorker
 
 # asyncpg timeouts, in seconds: fail fast when the database is unreachable or a query hangs,
 # instead of holding the request (and a pool connection) open indefinitely.
@@ -62,10 +63,17 @@ async def run_worker(settings: Settings) -> None:
         container.clock,
         batch_size=settings.outbox_batch_size,
     )
+    metrics = OutboxMetrics(CollectorRegistry())
     worker = OutboxWorker(
         relay,
+        metrics,
         poll_interval=settings.outbox_poll_interval_seconds,
         max_backoff=settings.outbox_max_backoff_seconds,
+    )
+    metrics_server = (
+        start_http_server(settings.worker_metrics_port, registry=metrics.registry)[0]
+        if settings.worker_metrics_port
+        else None
     )
     stop = asyncio.Event()
     # Docker stops a container with SIGTERM. Finishing the current pass first means a batch is
@@ -78,6 +86,8 @@ async def run_worker(settings: Settings) -> None:
     try:
         await worker.run(stop)
     finally:
+        if metrics_server is not None:
+            metrics_server.shutdown()
         await redis.aclose()
         await container.close()
 

@@ -1,10 +1,12 @@
 import asyncio
 import logging
+import time
 
 import pytest
+from prometheus_client import CollectorRegistry
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from ledger.worker import OutboxWorker
+from ledger.worker import OutboxMetrics, OutboxWorker
 
 POLL = 0.001
 
@@ -26,9 +28,21 @@ class ScriptedRelay:
         return result
 
 
-async def run(relay: ScriptedRelay, stop: asyncio.Event, *, max_backoff: float = 1.0) -> None:
-    worker = OutboxWorker(relay, poll_interval=POLL, max_backoff=max_backoff)
+async def run(
+    relay: ScriptedRelay, stop: asyncio.Event, *, max_backoff: float = 1.0
+) -> CollectorRegistry:
+    registry = CollectorRegistry()
+    worker = OutboxWorker(
+        relay, OutboxMetrics(registry), poll_interval=POLL, max_backoff=max_backoff
+    )
     await asyncio.wait_for(worker.run(stop), timeout=5)
+    return registry
+
+
+def sample(registry: CollectorRegistry, name: str) -> float:
+    value = registry.get_sample_value(name)
+    assert value is not None, f"{name} was never exported"
+    return value
 
 
 async def test_worker_keeps_relaying_until_a_pass_finds_nothing() -> None:
@@ -65,6 +79,19 @@ async def test_worker_backs_off_exponentially_up_to_the_cap(
     assert relay.passes == 6
 
 
+async def test_metrics_count_published_events_and_failures() -> None:
+    stop = asyncio.Event()
+    down = RedisConnectionError("Connection refused")
+    before = time.time()
+    relay = ScriptedRelay(stop, 100, down, 37, 0)
+
+    registry = await run(relay, stop)
+
+    assert sample(registry, "ledger_outbox_events_published_total") == 137
+    assert sample(registry, "ledger_outbox_relay_failures_total") == 1
+    assert sample(registry, "ledger_outbox_last_success_timestamp_seconds") >= before
+
+
 async def test_worker_survives_a_database_restart() -> None:
     stop = asyncio.Event()
     relay = ScriptedRelay(stop, OSError("server closed the connection"), TimeoutError(), 0)
@@ -89,7 +116,9 @@ async def test_stop_interrupts_the_idle_wait() -> None:
         async def relay(self) -> int:
             return 0
 
-    worker = OutboxWorker(EmptyOutbox(), poll_interval=60, max_backoff=60)
+    worker = OutboxWorker(
+        EmptyOutbox(), OutboxMetrics(CollectorRegistry()), poll_interval=60, max_backoff=60
+    )
     running = asyncio.create_task(worker.run(stop))
     await asyncio.sleep(0.01)
     stop.set()

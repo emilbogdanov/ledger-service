@@ -4,10 +4,12 @@ from importlib.metadata import version
 from typing import Any
 
 from fastapi import FastAPI
+from prometheus_client import CollectorRegistry
 from starlette.types import Lifespan
 
 from ledger.api.container import Container
 from ledger.api.errors import register_error_handlers
+from ledger.api.metrics import ApiMetrics
 from ledger.api.observability import observe_requests
 from ledger.api.routes import accounts, entries
 
@@ -20,7 +22,7 @@ def create_app(container: Container) -> FastAPI:
 
     app = _routed_app(lifespan)
     app.state.container = container
-    observe_requests(app)
+    observe_requests(app, ApiMetrics(CollectorRegistry()))
     return app
 
 

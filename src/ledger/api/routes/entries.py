@@ -3,8 +3,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Header, Response, status
 
-from ledger.api.dependencies import ContainerDep, CurrentClient
+from ledger.api.dependencies import ContainerDep, CurrentClient, MetricsDep
 from ledger.api.errors import error_responses
+from ledger.api.metrics import ApiMetrics
 from ledger.api.schemas import EntryResponse, PostEntry, Transfer
 from ledger.application.idempotency import IdempotencyKey
 from ledger.application.postings import PostedEntry
@@ -38,8 +39,10 @@ _REPLAYED = {
 async def transfer(
     body: Transfer,
     idempotency_key: IdempotencyKeyHeader,
+    *,
     client: CurrentClient,
     container: ContainerDep,
+    metrics: MetricsDep,
     response: Response,
 ) -> EntryResponse:
     posted = await container.postings().transfer(
@@ -50,15 +53,17 @@ async def transfer(
         memo=body.memo,
         idempotency_key=IdempotencyKey(idempotency_key),
     )
-    return _respond(posted, response)
+    return _respond(posted, response, metrics)
 
 
 @router.post("/entries", status_code=status.HTTP_201_CREATED, responses=_REPLAYED)
 async def post_entry(
     body: PostEntry,
     idempotency_key: IdempotencyKeyHeader,
+    *,
     client: CurrentClient,
     container: ContainerDep,
+    metrics: MetricsDep,
     response: Response,
 ) -> EntryResponse:
     posted = await container.postings().post_entry(
@@ -70,7 +75,7 @@ async def post_entry(
         memo=body.memo,
         idempotency_key=IdempotencyKey(idempotency_key),
     )
-    return _respond(posted, response)
+    return _respond(posted, response, metrics)
 
 
 @router.get("/entries/{entry_id}")
@@ -80,9 +85,10 @@ async def get_entry(
     return EntryResponse.of(await container.postings().get_entry(client.id, EntryId(entry_id)))
 
 
-def _respond(posted: PostedEntry, response: Response) -> EntryResponse:
+def _respond(posted: PostedEntry, response: Response, metrics: ApiMetrics) -> EntryResponse:
     response.headers["Location"] = f"/entries/{posted.entry.id}"
     if posted.replayed:
         response.status_code = status.HTTP_200_OK
         response.headers["Idempotent-Replayed"] = "true"
+    metrics.entries.labels("replayed" if posted.replayed else "posted").inc()
     return EntryResponse.of(posted.entry)

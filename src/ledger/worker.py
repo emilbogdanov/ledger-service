@@ -3,6 +3,7 @@ import logging
 from contextlib import suppress
 from typing import Final, Protocol
 
+from prometheus_client import CollectorRegistry, Counter, Gauge
 from redis.exceptions import RedisError
 from sqlalchemy.exc import DBAPIError
 
@@ -17,9 +18,39 @@ class Relay(Protocol):
     async def relay(self) -> int: ...
 
 
+class OutboxMetrics:
+    def __init__(self, registry: CollectorRegistry) -> None:
+        self.registry = registry
+        self.published = Counter(
+            "ledger_outbox_events_published",
+            "Events sent to the stream; a batch resent after a failure counts again.",
+            registry=registry,
+        )
+        self.failures = Counter(
+            "ledger_outbox_relay_failures",
+            "Relay passes that failed because Redis or Postgres was unavailable.",
+            registry=registry,
+        )
+        # Alert on its age rather than on failures: it also goes stale when the worker hangs
+        # or isn't running at all, which no failure counter would show.
+        self.last_success = Gauge(
+            "ledger_outbox_last_success_timestamp_seconds",
+            "When a relay pass last completed, sending events or finding none to send.",
+            registry=registry,
+        )
+
+
 class OutboxWorker:
-    def __init__(self, relay: Relay, *, poll_interval: float, max_backoff: float) -> None:
+    def __init__(
+        self,
+        relay: Relay,
+        metrics: OutboxMetrics,
+        *,
+        poll_interval: float,
+        max_backoff: float,
+    ) -> None:
         self._relay = relay
+        self._metrics = metrics
         self._poll_interval = poll_interval
         self._max_backoff = max_backoff
 
@@ -30,6 +61,7 @@ class OutboxWorker:
                 sent = await self._relay.relay()
             except _TRANSIENT_ERRORS:
                 failures += 1
+                self._metrics.failures.inc()
                 delay = min(self._poll_interval * 2**failures, self._max_backoff)
                 logger.warning(
                     "relaying events failed (attempt %d), retrying in %.3fs",
@@ -39,6 +71,8 @@ class OutboxWorker:
                 )
                 await _wait(stop, delay)
                 continue
+            self._metrics.published.inc(sent)
+            self._metrics.last_success.set_to_current_time()
             if failures:
                 logger.info("relaying events works again after %d failed attempts", failures)
                 failures = 0

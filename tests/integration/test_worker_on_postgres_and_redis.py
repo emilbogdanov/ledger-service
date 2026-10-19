@@ -1,6 +1,7 @@
 import asyncio
 from datetime import UTC, datetime
 
+from prometheus_client import CollectorRegistry
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -10,7 +11,7 @@ from ledger.domain.accounts import AccountName, OverdraftPolicy
 from ledger.domain.money import Currency
 from ledger.infrastructure.db.unit_of_work import SqlUnitOfWork
 from ledger.infrastructure.redis_stream import RedisStreamPublisher
-from ledger.worker import OutboxWorker
+from ledger.worker import OutboxMetrics, OutboxWorker
 from tests.integration.clients import ACME
 from tests.unit.application.fakes import FixedClock
 
@@ -28,7 +29,11 @@ async def test_running_worker_publishes_events_as_they_are_committed(
         batch_size=10,
     )
     stop = asyncio.Event()
-    running = asyncio.create_task(OutboxWorker(relay, poll_interval=0.05, max_backoff=1).run(stop))
+    running = asyncio.create_task(
+        OutboxWorker(
+            relay, OutboxMetrics(CollectorRegistry()), poll_interval=0.05, max_backoff=1
+        ).run(stop)
+    )
     accounts = AccountService(SqlUnitOfWork(session_factory), CLOCK)
 
     for number in range(3):

@@ -22,3 +22,5 @@ class Settings(BaseSettings):
     outbox_batch_size: PositiveInt = 100
     outbox_poll_interval_seconds: PositiveFloat = 1.0
     outbox_max_backoff_seconds: PositiveFloat = 30.0
+    # Where the worker serves /metrics for Prometheus; 0 turns it off.
+    worker_metrics_port: int = Field(default=9100, ge=0, le=65_535)

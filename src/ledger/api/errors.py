@@ -1,4 +1,4 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -20,6 +20,9 @@ from ledger.domain.errors import (
     InvalidValueError,
     UnbalancedEntryError,
 )
+
+if TYPE_CHECKING:
+    from ledger.api.metrics import ApiMetrics
 
 # The one place where business errors become HTTP responses. The code is stable and meant for
 # clients to branch on; the message is for people.
@@ -55,7 +58,8 @@ def register_error_handlers(app: FastAPI) -> None:
 
 # FastAPI's default 422 body has a different shape from every other error. Clients get one
 # shape to handle instead, with the per-field details kept under "errors".
-async def _malformed_request(_: Request, error: RequestValidationError) -> JSONResponse:
+async def _malformed_request(request: Request, error: RequestValidationError) -> JSONResponse:
+    _count(request, "invalid_request")
     return JSONResponse(
         {
             "detail": "request is malformed",
@@ -66,12 +70,13 @@ async def _malformed_request(_: Request, error: RequestValidationError) -> JSONR
     )
 
 
-async def _to_response(_: Request, error: Exception) -> JSONResponse:
+async def _to_response(request: Request, error: Exception) -> JSONResponse:
     # Handlers are registered per mapped type, so one of the error's classes is in the table,
     # and walking the MRO picks the most specific mapping.
     status_code, code = next(
         ERROR_RESPONSES[cls] for cls in type(error).__mro__ if cls in ERROR_RESPONSES
     )
+    _count(request, code)
     return JSONResponse(
         {"detail": str(error), "code": code},
         status_code=status_code,
@@ -81,8 +86,14 @@ async def _to_response(_: Request, error: Exception) -> JSONResponse:
     )
 
 
-async def _unexpected(_: Request, __: Exception) -> JSONResponse:
+async def _unexpected(request: Request, _: Exception) -> JSONResponse:
+    _count(request, "internal")
     return JSONResponse(
         {"detail": "internal error", "code": "internal"},
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
     )
+
+
+def _count(request: Request, code: str) -> None:
+    metrics: ApiMetrics = request.app.state.metrics
+    metrics.errors.labels(code).inc()
