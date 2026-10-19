@@ -37,7 +37,7 @@ build-backend = "uv_build"
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tests"]
+src = ["src", "tests", "loadtest"]
 
 [tool.ruff.lint]
 select = [
@@ -53,13 +53,15 @@ ignore = [
 # asserts, fake credentials, literal expectations, tests that request many fixtures,
 # seeded randomness for test data
 "tests/**" = ["S101", "S105", "S106", "PLR2004", "PLR0917", "S311"]
+# seeded randomness picks the load test's traffic, it protects nothing
+"loadtest/**" = ["S311"]
 
 [tool.mypy]
 strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
 plugins = ["pydantic.mypy"]
-files = ["src", "tests", "migrations"]
+files = ["src", "tests", "migrations", "loadtest"]
 mypy_path = "src"
 
 [tool.pydantic-mypy]

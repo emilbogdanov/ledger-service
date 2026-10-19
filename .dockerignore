@@ -15,6 +15,7 @@
 htmlcov
 
 tests
+loadtest
 Dockerfile
 .dockerignore
 docker-compose.yml
