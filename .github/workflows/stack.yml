@@ -1,0 +1,75 @@
+name: stack
+
+# Builds the image, starts everything with docker compose and drives it from outside, so a
+# broken Dockerfile, compose file, migration or wiring between the services fails here.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stack-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build and start
+        run: docker compose up --build --detach
+
+      - name: Wait for the API and the worker
+        run: |
+          curl --fail --silent --show-error --retry 30 --retry-delay 2 --retry-all-errors \
+            http://localhost:8000/health
+          curl --fail --silent --show-error --retry 30 --retry-delay 2 --retry-all-errors \
+            --output /dev/null http://localhost:9100/metrics
+
+      - name: Create the client the tests use
+        run: |
+          key=$(docker compose exec -T api ledger create-client --name "Stack CI" \
+            | sed -n 's/^api key: //p')
+          test -n "$key"
+          echo "::add-mask::$key"
+          echo "LEDGER_STACK_API_KEY=$key" >> "$GITHUB_ENV"
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Test the running stack
+        run: |
+          uv sync --locked
+          uv run pytest tests/stack -p no:cacheprovider
+
+      - name: Reconcile the ledger the tests left behind
+        run: docker compose exec -T api ledger reconcile
+
+      - name: Stop the worker and check it finished cleanly
+        run: |
+          docker compose stop worker
+          docker compose logs --no-log-prefix worker | grep -q '"message": "outbox worker stopped"'
+
+      - name: Check every log line is JSON
+        run: |
+          docker compose logs --no-log-prefix api worker | python3 -c '
+          import json, sys
+          for number, line in enumerate(sys.stdin, start=1):
+              if line.strip():
+                  json.loads(line)
+          print(f"{number} lines, all JSON")
+          '
+
+      - name: Show logs
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop
+        if: always()
+        run: docker compose down --volumes
