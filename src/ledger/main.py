@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from ledger.api.app import create_app
 from ledger.api.container import Container
 from ledger.application.outbox import OutboxRelay
+from ledger.application.reconciliation import ReconciliationReport, ReconciliationService
 from ledger.config import Settings
 from ledger.infrastructure.clock import SystemClock
+from ledger.infrastructure.db.audit import SqlLedgerAudit
 from ledger.infrastructure.db.unit_of_work import SqlUnitOfWork
 from ledger.infrastructure.redis_stream import RedisStreamPublisher
 from ledger.worker import OutboxWorker
@@ -20,6 +22,8 @@ from ledger.worker import OutboxWorker
 # instead of holding the request (and a pool connection) open indefinitely.
 _CONNECT_TIMEOUT = 5
 _QUERY_TIMEOUT = 15
+# Reconciliation aggregates every posting, which on a large ledger outlasts any request.
+_RECONCILIATION_QUERY_TIMEOUT = 30 * 60
 
 
 def build_container(settings: Settings) -> Container:
@@ -82,3 +86,18 @@ async def run_worker(settings: Settings) -> None:
     finally:
         await redis.aclose()
         await container.close()
+
+
+async def reconcile(settings: Settings, *, limit: int) -> ReconciliationReport:
+    engine = create_async_engine(
+        str(settings.database_url),
+        connect_args={
+            "timeout": _CONNECT_TIMEOUT,
+            "command_timeout": _RECONCILIATION_QUERY_TIMEOUT,
+        },
+    )
+    try:
+        audit = SqlLedgerAudit(async_sessionmaker(engine, expire_on_commit=False))
+        return await ReconciliationService(audit, SystemClock()).reconcile(limit=limit)
+    finally:
+        await engine.dispose()

@@ -8,11 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from ledger.application.accounts import AccountService
 from ledger.application.idempotency import IdempotencyKey
 from ledger.application.postings import PostedEntry, PostingService
+from ledger.application.reconciliation import ReconciliationService
 from ledger.domain.accounts import Account, AccountName, OverdraftPolicy
 from ledger.domain.errors import InsufficientFundsError
 from ledger.domain.ids import AccountId
 from ledger.domain.journal import Posting
 from ledger.domain.money import Currency, Money
+from ledger.infrastructure.db.audit import SqlLedgerAudit
 from ledger.infrastructure.db.tables import AccountRow, JournalEntryRow, PostingRow
 from ledger.infrastructure.db.unit_of_work import SqlUnitOfWork
 from tests.integration.clients import ACME
@@ -126,3 +128,5 @@ async def test_concurrent_entries_never_deadlock_or_create_money(
     assert balances[funding] == -WALLETS * OPENING_BALANCE
     for wallet in wallets:
         assert wallet.overdraft.allows(eur(balances[wallet.id])), f"{wallet.name} below its floor"
+    audit = ReconciliationService(SqlLedgerAudit(session_factory), CLOCK)
+    assert (await audit.reconcile(limit=10)).is_clean

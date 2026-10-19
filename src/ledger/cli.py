@@ -4,12 +4,19 @@ import json
 import sys
 from collections.abc import Sequence
 from contextlib import suppress
+from typing import Final
 
 from ledger.api.app import openapi_schema
 from ledger.application.clients import RegisteredClient
+from ledger.application.reconciliation import ReconciliationReport
 from ledger.config import Settings
 from ledger.domain.errors import InvalidValueError
-from ledger.main import build_container, configure_logging, run_worker
+from ledger.domain.money import format_minor_units
+from ledger.main import build_container, configure_logging, reconcile, run_worker
+
+# Distinct from 1, which means the command itself failed, so a scheduler can alert on a ledger
+# that doesn't add up without confusing it with a database that was unreachable.
+DISCREPANCIES_FOUND: Final = 2
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -25,6 +32,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         "openapi", help="print the API schema as JSON, e.g. to generate a typed client"
     )
     commands.add_parser("worker", help="publish outbox events to the Redis stream until stopped")
+    reconcile_command = commands.add_parser(
+        "reconcile",
+        help="check that every balance matches its postings and every entry balances",
+        description=(
+            "Safe to run while the API is serving traffic: it reads one consistent snapshot. "
+            f"Exits 0 when the ledger reconciles and {DISCREPANCIES_FOUND} when it doesn't."
+        ),
+    )
+    reconcile_command.add_argument(
+        "--limit",
+        type=_positive_int,
+        default=100,
+        help="report at most this many findings of each kind (default: 100)",
+    )
     args = parser.parse_args(argv)
 
     match args.command:
@@ -32,6 +53,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _create_client(args.name)
         case "openapi":
             return _print_openapi()
+        case "reconcile":
+            return _reconcile(args.limit)
         case _:
             return _worker()
 
@@ -70,3 +93,52 @@ def _worker() -> int:
     with suppress(KeyboardInterrupt):
         asyncio.run(run_worker(settings))
     return 0
+
+
+def _reconcile(limit: int) -> int:
+    report = asyncio.run(reconcile(Settings(), limit=limit))
+    sys.stdout.write("".join(f"{line}\n" for line in describe(report)))
+    return 0 if report.is_clean else DISCREPANCIES_FOUND
+
+
+def describe(report: ReconciliationReport) -> list[str]:
+    findings = report.findings
+    lines = [
+        f"reconciled {_counted(findings.accounts_checked, 'account', 'accounts')} and"
+        f" {_counted(findings.entries_checked, 'entry', 'entries')}"
+        f" as of {report.checked_at.isoformat()}"
+    ]
+    lines += [
+        f"balance mismatch: account {mismatch.account_id} (client {mismatch.client_id}) stores"
+        f" {format_minor_units(mismatch.stored, mismatch.currency)} but its postings sum to"
+        f" {format_minor_units(mismatch.from_postings, mismatch.currency)}"
+        for mismatch in findings.balance_mismatches
+    ]
+    lines += [
+        f"unbalanced entry: {imbalance.entry_id} is off by"
+        f" {format_minor_units(imbalance.off_by, imbalance.currency)}"
+        for imbalance in findings.entry_imbalances
+    ]
+    lines += [
+        f"misdirected posting: entry {posting.entry_id} posts to account {posting.account_id},"
+        f" but {posting.problem}"
+        for posting in findings.misdirected_postings
+    ]
+    if report.is_clean:
+        lines.append("ok: every balance matches its postings and every entry balances")
+    else:
+        lines.append(f"found {_counted(report.discrepancies, 'discrepancy', 'discrepancies')}")
+    if report.truncated:
+        lines.append(f"only the first {report.limit} of each kind are shown; there may be more")
+    return lines
+
+
+def _counted(count: int, singular: str, plural: str) -> str:
+    return f"{count} {singular if count == 1 else plural}"
+
+
+def _positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return number
