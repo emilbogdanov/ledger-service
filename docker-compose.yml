@@ -1,0 +1,93 @@
+name: ledger
+
+# One image runs as three services: migrate once, then the API and the outbox worker.
+x-ledger: &ledger
+  build: .
+  image: ledger-service
+  environment:
+    LEDGER_DATABASE_URL: postgresql+asyncpg://ledger:ledger@db:5432/ledger
+    LEDGER_REDIS_URL: redis://redis:6379/0
+    LEDGER_LOG_LEVEL: ${LEDGER_LOG_LEVEL:-INFO}
+    LEDGER_LOG_FORMAT: ${LEDGER_LOG_FORMAT:-json}
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ledger
+      POSTGRES_PASSWORD: ledger
+      POSTGRES_DB: ledger
+    ports:
+      - "5432:5432"
+    volumes:
+      # Postgres 18 images keep their data in a versioned directory under this path.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledger -d ledger"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # A separate one-shot step, so several API or worker replicas never race to migrate.
+  migrate:
+    <<: *ledger
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *ledger
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  worker:
+    <<: *ledger
+    command: ["ledger", "worker"]
+    ports:
+      - "9100:9100"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/metrics', timeout=2)
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    # Time to finish the pass in progress after SIGTERM.
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
