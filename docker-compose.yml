@@ -6,6 +6,9 @@ name: ledger
 x-ledger: &ledger
   image: ledger-service
   pull_policy: never
+  # A process running as PID 1 ignores SIGTERM until it installs a handler, so a stop sent while
+  # the app is still importing would wait out the grace period. Docker's init forwards it.
+  init: true
   environment:
     LEDGER_DATABASE_URL: postgresql+asyncpg://ledger:ledger@db:5432/ledger
     LEDGER_REDIS_URL: redis://redis:6379/0
