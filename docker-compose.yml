@@ -1,9 +1,11 @@
 name: ledger
 
-# One image runs as three services: migrate once, then the API and the outbox worker.
+# One image runs as three services: migrate once, then the API and the outbox worker. Only
+# migrate builds it: three services building the same tag at once race to export it, and the
+# loser fails with "image already exists". The others never pull, since it isn't on a registry.
 x-ledger: &ledger
-  build: .
   image: ledger-service
+  pull_policy: never
   environment:
     LEDGER_DATABASE_URL: postgresql+asyncpg://ledger:ledger@db:5432/ledger
     LEDGER_REDIS_URL: redis://redis:6379/0
@@ -41,6 +43,8 @@ services:
   # A separate one-shot step, so several API or worker replicas never race to migrate.
   migrate:
     <<: *ledger
+    build: .
+    pull_policy: build
     command: ["alembic", "upgrade", "head"]
     depends_on:
       db:
