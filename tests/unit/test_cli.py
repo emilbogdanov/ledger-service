@@ -164,3 +164,31 @@ def test_limit_must_be_a_positive_number(limit: str) -> None:
         main(["reconcile", "--limit", limit])
 
     assert excinfo.value.code == 2
+
+
+async def refuse_connection(*_: object, **__: object) -> ReconciliationReport:
+    raise ConnectionRefusedError(111, "Connect call failed ('127.0.0.1', 5432)")
+
+
+@pytest.mark.parametrize(
+    ("command", "target"),
+    [
+        (["reconcile"], "ledger.cli.reconcile"),
+        (["create-client", "--name", "Acme"], "ledger.cli._register"),
+    ],
+)
+def test_unreachable_database_is_one_line_and_exit_one(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    command: list[str],
+    target: str,
+) -> None:
+    monkeypatch.setenv("LEDGER_DATABASE_URL", DATABASE_URL)
+    monkeypatch.setenv("LEDGER_REDIS_URL", "redis://cache:6379/0")
+    monkeypatch.setattr(target, refuse_connection)
+
+    assert main(command) == 1
+
+    assert capsys.readouterr().err == (
+        "error: cannot reach the database: [Errno 111] Connect call failed ('127.0.0.1', 5432)\n"
+    )

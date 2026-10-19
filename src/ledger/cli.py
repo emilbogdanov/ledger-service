@@ -6,6 +6,8 @@ from collections.abc import Sequence
 from contextlib import suppress
 from typing import Final
 
+from sqlalchemy.exc import DBAPIError
+
 from ledger.api.app import openapi_schema
 from ledger.application.clients import RegisteredClient
 from ledger.application.reconciliation import ReconciliationReport
@@ -14,6 +16,10 @@ from ledger.domain.errors import InvalidValueError
 from ledger.domain.money import format_minor_units
 from ledger.logs import configure_logging
 from ledger.main import build_container, reconcile, run_worker
+
+# What a database that is down, unreachable or refusing the credentials looks like. Reported in
+# one line: a traceback through asyncpg and SQLAlchemy would only bury the reason.
+_UNREACHABLE: Final = (OSError, DBAPIError)
 
 # Distinct from 1, which means the command itself failed, so a scheduler can alert on a ledger
 # that doesn't add up without confusing it with a database that was unreachable.
@@ -64,8 +70,9 @@ def _create_client(name: str) -> int:
     try:
         registered = asyncio.run(_register(name))
     except InvalidValueError as error:
-        sys.stderr.write(f"error: {error}\n")
-        return 1
+        return _fail(str(error))
+    except _UNREACHABLE as error:
+        return _fail(_cannot_reach_database(error))
     sys.stdout.write(
         f"created client {registered.client.name} ({registered.client.id})\n"
         f"api key: {registered.api_key}\n"
@@ -97,7 +104,10 @@ def _worker() -> int:
 
 
 def _reconcile(limit: int) -> int:
-    report = asyncio.run(reconcile(Settings(), limit=limit))
+    try:
+        report = asyncio.run(reconcile(Settings(), limit=limit))
+    except _UNREACHABLE as error:
+        return _fail(_cannot_reach_database(error))
     sys.stdout.write("".join(f"{line}\n" for line in describe(report)))
     return 0 if report.is_clean else DISCREPANCIES_FOUND
 
@@ -143,3 +153,13 @@ def _positive_int(value: str) -> int:
     if number < 1:
         raise argparse.ArgumentTypeError("must be at least 1")
     return number
+
+
+def _cannot_reach_database(error: OSError | DBAPIError) -> str:
+    reason = error.orig if isinstance(error, DBAPIError) else error
+    return f"cannot reach the database: {reason}"
+
+
+def _fail(message: str) -> int:
+    sys.stderr.write(f"error: {message}\n")
+    return 1
