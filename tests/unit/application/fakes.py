@@ -7,7 +7,7 @@ from typing import Self
 
 from ledger.application.clients import Client
 from ledger.application.errors import IdempotencyKeyConflictError
-from ledger.application.events import Event
+from ledger.application.events import Event, PendingEvent
 from ledger.application.history import AccountPosting, HistoryCursor
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account
@@ -24,6 +24,8 @@ class LedgerState:
     entries: dict[EntryId, JournalEntry] = field(default_factory=dict)
     idempotency: dict[KeySlot, IdempotencyRecord] = field(default_factory=dict)
     outbox: list[Event] = field(default_factory=list)
+    # When each event went out, by id; an event's id is its position in the outbox from 1.
+    published: dict[int, datetime] = field(default_factory=dict)
 
 
 class FixedClock:
@@ -131,6 +133,17 @@ class InMemoryOutbox:
 
     async def add(self, event: Event) -> None:
         self._state.outbox.append(event)
+
+    async def claim(self, limit: int) -> list[PendingEvent]:
+        pending = [
+            PendingEvent(number, event)
+            for number, event in enumerate(self._state.outbox, start=1)
+            if number not in self._state.published
+        ]
+        return pending[:limit]
+
+    async def mark_published(self, event_ids: Collection[int], *, at: datetime) -> None:
+        self._state.published.update(dict.fromkeys(event_ids, at))
 
 
 # Each block works on a private copy of the committed state, so leaving it without commit()

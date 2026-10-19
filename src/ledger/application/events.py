@@ -20,6 +20,14 @@ class Event:
     payload: Mapping[str, object]
 
 
+# An event as stored in the outbox, numbered in the order it was written. The number is also
+# the id consumers deduplicate on, since the relay delivers at least once.
+@dataclass(frozen=True, slots=True)
+class PendingEvent:
+    id: int
+    event: Event
+
+
 def account_opened(account: Account, *, at: datetime) -> Event:
     return Event(
         type="account.opened",

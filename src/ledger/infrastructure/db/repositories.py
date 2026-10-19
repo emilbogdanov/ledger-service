@@ -1,12 +1,13 @@
 from collections.abc import Collection
+from datetime import datetime
 
-from sqlalchemy import insert, select, tuple_
+from sqlalchemy import insert, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ledger.application.clients import Client
 from ledger.application.errors import IdempotencyKeyConflictError
-from ledger.application.events import Event
+from ledger.application.events import Event, PendingEvent
 from ledger.application.history import AccountPosting, HistoryCursor
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account, AccountName, OverdraftPolicy
@@ -211,6 +212,22 @@ class SqlOutbox:
             OutboxEventRow(
                 type=event.type, payload=dict(event.payload), occurred_at=event.occurred_at
             )
+        )
+
+    async def claim(self, limit: int) -> list[PendingEvent]:
+        rows = await self._session.scalars(
+            select(OutboxEventRow)
+            .where(OutboxEventRow.published_at.is_(None))
+            .order_by(OutboxEventRow.id)
+            .limit(limit)
+            # Lets several relays share the outbox: each takes the next batch nobody holds.
+            .with_for_update(skip_locked=True)
+        )
+        return [PendingEvent(row.id, Event(row.type, row.occurred_at, row.payload)) for row in rows]
+
+    async def mark_published(self, event_ids: Collection[int], *, at: datetime) -> None:
+        await self._session.execute(
+            update(OutboxEventRow).where(OutboxEventRow.id.in_(event_ids)).values(published_at=at)
         )
 
 

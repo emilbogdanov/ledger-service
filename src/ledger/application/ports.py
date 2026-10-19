@@ -1,10 +1,10 @@
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from datetime import datetime
 from types import TracebackType
 from typing import Protocol, Self
 
 from ledger.application.clients import Client
-from ledger.application.events import Event
+from ledger.application.events import Event, PendingEvent
 from ledger.application.history import AccountPosting, HistoryCursor
 from ledger.application.idempotency import IdempotencyKey, IdempotencyRecord
 from ledger.domain.accounts import Account
@@ -63,6 +63,17 @@ class Outbox(Protocol):
     # Written in the caller's transaction, so an event exists exactly when the change it
     # describes was committed.
     async def add(self, event: Event) -> None: ...
+
+    # Up to `limit` unpublished events, oldest first, locked until the unit of work ends.
+    # Events another relay has locked are skipped rather than waited for.
+    async def claim(self, limit: int) -> list[PendingEvent]: ...
+
+    async def mark_published(self, event_ids: Collection[int], *, at: datetime) -> None: ...
+
+
+class EventPublisher(Protocol):
+    # All or nothing is not promised: after a failure some of the events may already be out.
+    async def publish(self, events: Sequence[PendingEvent]) -> None: ...
 
 
 class UnitOfWork(Protocol):

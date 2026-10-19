@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -13,12 +14,14 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from testcontainers.community.postgres import PostgresContainer
+from testcontainers.community.redis import RedisContainer
 
 from ledger.infrastructure.db.repositories import SqlClientRepository
 from tests.integration.clients import REGISTERED
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 POSTGRES_IMAGE = "postgres:18-alpine"
+REDIS_IMAGE = "redis:8-alpine"
 
 
 @pytest.fixture(scope="session")
@@ -31,6 +34,26 @@ def database_url() -> Iterator[str]:
         return
     with PostgresContainer(POSTGRES_IMAGE, driver="asyncpg") as postgres:
         yield postgres.get_connection_url()
+
+
+@pytest.fixture(scope="session")
+def redis_url() -> Iterator[str]:
+    # Same deal as the database: LEDGER_TEST_REDIS_URL reuses a Redis you already run, and the
+    # tests flush it, so point it at nothing you care about.
+    configured = os.environ.get("LEDGER_TEST_REDIS_URL")
+    if configured:
+        yield configured
+        return
+    with RedisContainer(REDIS_IMAGE) as redis:
+        yield f"redis://{redis.get_container_host_ip()}:{redis.get_exposed_port(6379)}/0"
+
+
+@pytest.fixture
+async def redis(redis_url: str) -> AsyncIterator[Redis]:
+    client = Redis.from_url(redis_url)
+    await client.flushdb()
+    yield client
+    await client.aclose()
 
 
 @pytest.fixture(scope="session")
