@@ -3,12 +3,13 @@ import asyncio
 import json
 import sys
 from collections.abc import Sequence
+from contextlib import suppress
 
 from ledger.api.app import openapi_schema
 from ledger.application.clients import RegisteredClient
 from ledger.config import Settings
 from ledger.domain.errors import InvalidValueError
-from ledger.main import build_container
+from ledger.main import build_container, configure_logging, run_worker
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -23,13 +24,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     commands.add_parser(
         "openapi", help="print the API schema as JSON, e.g. to generate a typed client"
     )
+    commands.add_parser("worker", help="publish outbox events to the Redis stream until stopped")
     args = parser.parse_args(argv)
 
     match args.command:
         case "create-client":
             return _create_client(args.name)
-        case _:
+        case "openapi":
             return _print_openapi()
+        case _:
+            return _worker()
 
 
 def _create_client(name: str) -> int:
@@ -56,4 +60,13 @@ async def _register(name: str) -> RegisteredClient:
 def _print_openapi() -> int:
     # ASCII-only output survives a shell redirect on any platform's console encoding.
     sys.stdout.write(json.dumps(openapi_schema(), indent=2, ensure_ascii=True) + "\n")
+    return 0
+
+
+def _worker() -> int:
+    settings = Settings()
+    configure_logging(settings)
+    # Ctrl+C on Windows, where asyncio can't install signal handlers, arrives as this.
+    with suppress(KeyboardInterrupt):
+        asyncio.run(run_worker(settings))
     return 0

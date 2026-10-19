@@ -32,8 +32,13 @@ def test_reads_prefixed_environment_variables(env: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.usefixtures("env")
-def test_log_level_defaults_to_info() -> None:
-    assert load_settings().log_level == "INFO"
+def test_defaults_apply_when_optional_values_are_missing() -> None:
+    settings = load_settings()
+
+    assert settings.log_level == "INFO"
+    assert settings.events_stream == "ledger:events"
+    assert settings.outbox_batch_size == 100
+    assert settings.outbox_poll_interval_seconds == 1.0
 
 
 @pytest.mark.parametrize(
@@ -42,6 +47,9 @@ def test_log_level_defaults_to_info() -> None:
         ("LEDGER_DATABASE_URL", "mysql://ledger:ledger@db:3306/ledger"),
         ("LEDGER_REDIS_URL", "http://cache:6379"),
         ("LEDGER_LOG_LEVEL", "VERBOSE"),
+        ("LEDGER_OUTBOX_BATCH_SIZE", "0"),
+        ("LEDGER_OUTBOX_POLL_INTERVAL_SECONDS", "-1"),
+        ("LEDGER_EVENTS_STREAM", ""),
     ],
 )
 def test_rejects_invalid_values(env: pytest.MonkeyPatch, name: str, value: str) -> None:
